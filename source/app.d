@@ -1,9 +1,12 @@
-import core.stdc.stdio;
-immutable char[] nullTerminatedStr = "Hello, World!\0";
+import std.stdio;
+import socks5d.server;
 
 int main()
 {
-    puts(nullTerminatedStr.ptr);
+    writeln("Starting socks5d server v. 0.0.1");
+
+    auto server = new Server(1080);
+    server.start();
 
     return 0;
 }

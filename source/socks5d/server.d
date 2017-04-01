@@ -2,8 +2,7 @@ module socks5d.server;
 
 import socks5d.client;
 import core.thread : Thread;
-import std.stdio, std.socket;
-import std.datetime : msecs, dur;
+import std.socket;
 
 class Server : Thread
 {
@@ -11,12 +10,8 @@ class Server : Thread
         ushort port;
         int backlog;
         Socket socket;
-        SocketSet set;
+        Client[] clients;
 
-        this ()
-        {
-            super(&run);
-        }
     public:
         this(ushort port = 1080, int backlog = 10)
         {
@@ -28,14 +23,24 @@ class Server : Thread
 
         final void run()
         {
-            int counter = 10;
-            auto client = new Client;
-            client.start();
+            socket = new TcpSocket;
+            assert(socket.isAlive);
+            socket.bind(new InternetAddress(port));
+            socket.listen(backlog);
 
-            while(counter--) {
-                writeln("Server is running... ", counter);
-                Thread.sleep(dur!"msecs"(2000));
+            while (true) {
+                acceptClient();
                 Thread.yield();
             }
         }
+
+    void acceptClient()
+    {
+        auto clientSocket = socket.accept();
+        assert(clientSocket.isAlive);
+        assert(socket.isAlive);
+        auto client = new Client(clientSocket);
+        clients ~= client;
+        client.start();
+    }
 }
