@@ -2,19 +2,21 @@ module socks5d.server;
 
 import socks5d.client;
 import core.thread : Thread;
-import std.socket;
+import std.socket, std.stdio;
 
 class Server : Thread
 {
     private:
+        string address;
         ushort port;
         int backlog;
         Socket socket;
         Client[] clients;
 
     public:
-        this(ushort port = 1080, int backlog = 10)
+        this(string address, ushort port = 1080, int backlog = 10)
         {
+            this.address = address;
             this.port = port;
             this.backlog = backlog;
 
@@ -25,8 +27,10 @@ class Server : Thread
         {
             socket = new TcpSocket;
             assert(socket.isAlive);
-            socket.bind(new InternetAddress(port));
+            socket.bind(new InternetAddress(address, port));
             socket.listen(backlog);
+
+            writefln("Listening on %s:%d", socket.localAddress().toAddrString(), port);
 
             while (true) {
                 acceptClient();
