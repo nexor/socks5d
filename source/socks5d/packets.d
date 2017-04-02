@@ -1,6 +1,5 @@
 module socks5d.packets;
 
-import std.stdio;
 import std.socket;
 import std.algorithm;
 import std.bitmanip;
@@ -37,7 +36,7 @@ enum ReplyCode : ubyte {
     ADDR_NOTSUPPORTED = 0x08
 }
 
-auto get(T)(Socket s, T)
+auto get(T)(Socket s)
 {
     union buffer {
         ubyte[T.sizeof] b;
@@ -50,7 +49,47 @@ auto get(T)(Socket s, T)
     return buf.v;
 }
 
-class RequestException : Exception
+// read from socket into variable length buffer
+void getv(alias TLEN, alias TBUF)(Socket s)
+{
+    TLEN = get!ubyte(s);
+    TBUF = new ubyte[TLEN];
+
+    s.receive(TBUF);
+}
+
+
+mixin template SocksVersion()
+{
+    ubyte ver; //should be 0x05 (or 0x01 for auth)
+
+    void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
+    {
+        ver = get!ubyte(socket);
+        if (ver != requiredVersion) {
+            throw new SocksException("Incorrect protocol version: " ~ to!string(ver));
+        }
+    }
+
+    void dumpByte(Socket socket)
+    {
+        auto bt = get!ubyte(socket);
+        std.stdio.writeln("Byte = " ~ to!string(bt));
+    }
+}
+
+class SocksException : Exception
+{
+    public:
+
+        this(string msg, string file = __FILE__,
+         size_t line = __LINE__, Throwable next = null) @safe pure nothrow
+        {
+            super(msg, file, line, next);
+        }
+}
+
+class RequestException : SocksException
 {
     public:
         ReplyCode replyCode;
@@ -65,17 +104,14 @@ class RequestException : Exception
 
 struct MethodIdentificationPacket
 {
-    ubyte   ver = 0x05;
+    mixin   SocksVersion;
     ubyte   nmethods;
     ubyte[] methods;
 
     void receive(Socket socket)
     {
-        ver = get!(ubyte)(socket, ver);
-        nmethods = get!(ubyte)(socket, nmethods);
-
-        methods = new ubyte[nmethods];
-        socket.receive(methods);
+        receiveVersion(socket);
+        getv!(nmethods, methods)(socket);
     }
 
     AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
@@ -96,54 +132,85 @@ struct MethodSelectionPacket
     ubyte method;
 }
 
-struct RequestPacket
+struct AuthPacket
+{
+    mixin   SocksVersion;
+    ubyte   ulen;
+    ubyte[] uname;
+    ubyte   plen;
+    ubyte[] passwd;
+
+    void receive(Socket socket)
+    {
+        receiveVersion(socket, 0x01);
+        getv!(ulen, uname)(socket);
+        getv!(plen, passwd)(socket);
+    }
+
+    string getUsername()
+    {
+        return to!string( cast(char[])uname );
+    }
+
+    string getPassword()
+    {
+        return to!string( cast(char[])passwd );
+    }
+}
+
+struct AuthStatusPacket
 {
     ubyte ver = 0x05;
-    RequestCmd cmd;
-    ubyte rsv = 0x00;
+    ubyte status = 0x00;
+}
+
+struct RequestPacket
+{
+    mixin SocksVersion;
+    RequestCmd  cmd;
+    ubyte       rsv = 0x00;
     AddressType atyp;
-    ubyte[] dstaddr;
-    ushort dstport;
+    ubyte[]     dstaddr;
+    ushort      dstport;
+
+    private InternetAddress address;
 
     // fill structure with data from socket
     InternetAddress receive(Socket socket)
     {
-        ver = get!ubyte(socket, ver);
+        receiveVersion(socket);
         readRequestCommand(socket);
-        rsv = get!(ubyte)(socket, rsv);
-        auto address = readAddressAndPort(socket);
+        rsv = get!ubyte(socket);
+        address = readAddressAndPort(socket);
 
         return address;
     }
 
     void readRequestCommand(Socket socket)
     {
-        cmd = get!(RequestCmd)(socket, cmd);
+        cmd = get!RequestCmd(socket);
         if (cmd != RequestCmd.CONNECT) {
-            throw new RequestException(ReplyCode.CMD_NOTSUPPORTED, "Only CONNECT method is supported");
+            throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
+                "Only CONNECT method is supported, given " ~ to!string(cmd));
         }
     }
 
     InternetAddress readAddressAndPort(Socket socket)
     {
-        atyp = get!(AddressType)(socket, atyp);
+        atyp = get!AddressType(socket);
 
         switch (atyp) {
             case AddressType.IPV4:
-                dstaddr = new ubyte[4];
-                socket.receive(dstaddr);
-
-                dstport = swapEndian(get!(ushort)(socket, dstport));
+                ubyte length = 4;
+                getv!(length, dstaddr)(socket);
+                dstport = swapEndian(get!ushort(socket));
 
                 return new InternetAddress(dstaddr.read!uint(), dstport);
 
             case AddressType.DOMAIN:
                 ubyte length;
-                length = get!ubyte(socket, length);
-                dstaddr = new ubyte[length];
-                socket.receive(dstaddr);
-
-                dstport = swapEndian(get!(ushort)(socket, dstport));
+                getv!(length, dstaddr)(socket);
+                dstport = swapEndian(get!ushort(socket));
 
                 return new InternetAddress(cast(char[])dstaddr, dstport);
 
@@ -154,16 +221,28 @@ struct RequestPacket
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp);
         }
     }
+
+    string dstAddressString()
+    {
+        if (atyp == AddressType.IPV4) {
+            return address.toAddrString();
+        }
+        if (atyp == AddressType.DOMAIN) {
+            return to!string(cast(char[])dstaddr);
+        }
+
+        return "(unknown)";
+    }
 }
 
 align(2) struct ResponsePacket
 {
-    ubyte ver = 0x05;
-    ReplyCode rep;
-    ubyte rsv = 0x00;
+    ubyte       ver = 0x05;
+    ReplyCode   rep;
+    ubyte       rsv = 0x00;
     AddressType atyp;
-    uint bndaddr;
-    ushort bndport;
+    uint        bndaddr;
+    ushort      bndport;
 
     bool setBindAddress(Address address)
     {

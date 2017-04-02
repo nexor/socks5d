@@ -3,61 +3,87 @@ module socks5d.client;
 import core.thread : Thread;
 import std.stdio, std.socket, std.conv;
 import socks5d.packets;
+import std.experimental.logger;
 
 class Client : Thread
 {
     protected:
+        uint         id;
         Socket       socket;
         Socket		 targetSocket;
-        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
+        AuthMethod[] availableMethods = [ AuthMethod.NoAUTH ];
 
     public:
-        this(Socket clientSocket)
+        this(Socket clientSocket, uint id)
         {
             socket = clientSocket;
+            this.id = id;
             super(&run);
         }
 
         final void run()
         {
-            debug writefln("Connection from %s established.", socket.remoteAddress().toString());
-
-            if (!authenticate()) {
-                socket.close();
-
-                return;
-            }
-
-            RequestPacket packet3;
-            ResponsePacket packet4;
-            InternetAddress targetAddress;
+            warningf("[%d] New client accepted: %s:%s", id,
+                socket.remoteAddress().toAddrString(),
+                socket.remoteAddress().toPortString()
+            );
 
             try {
-                targetAddress = packet3.receive(socket);
-                packet4.atyp = AddressType.IPV4;
-                packet4.rep = ReplyCode.SUCCEEDED;
-            } catch (RequestException e) {
-                debug writeln("Exception catched: " ~ e.msg);
-                packet4.rep = e.replyCode;
+                if (!authenticate()) {
+                    warningf("[%d] Client failed to authenticate.", id);
+                    socket.close();
+
+                    return;
+                }
+
+
+                infof("[%d] Client successfully authenticated.", id);
+
+
+                RequestPacket packet3;
+                ResponsePacket packet4;
+                InternetAddress targetAddress;
+
+                try {
+                    targetAddress = packet3.receive(socket);
+                    tracef("[%d] -> ver=%d, cmd=%d, rsv=%d, atyp=%d, dstaddr=%s, dstport=%d", id,
+                        packet3.ver, packet3.cmd, packet3.rsv, packet3.atyp, packet3.dstAddressString(),
+                        packet3.dstport
+                    );
+                    tracef("[%d] Target address detected: %s:%s", id,
+                        targetAddress.toAddrString(),
+                        targetAddress.toPortString(),
+                    );
+                    packet4.atyp = AddressType.IPV4;
+                    packet4.rep = ReplyCode.SUCCEEDED;
+                } catch (RequestException e) {
+                    errorf("Error: %s", e.msg);
+                    packet4.rep = e.replyCode;
+                    socket.send((&packet4)[0..1]);
+
+                    throw e;
+                }
+
+
+                targetSocket = connectToTarget(targetAddress);
+                packet4.setBindAddress(targetSocket.localAddress);
+
+                tracef("[%d] Local target address: %s:%s", id,
+                    targetSocket.localAddress.toAddrString(),
+                    targetSocket.localAddress.toPortString(),
+                );
                 socket.send((&packet4)[0..1]);
+
+                tracef("[%d] <-(%d bytes) ver=%d, rep=%d, rsv=%d, atyp=%d, bndaddr=%s, bndport=%d", id,
+                    packet4.sizeof,
+                    packet4.ver, packet4.rep, packet4.rsv, packet4.atyp, packet4.bndaddr, packet4.bndport);
+
+            } catch (SocksException e) {
+                errorf("Auth error: %s", e.msg);
                 socket.close();
 
                 return;
             }
-
-            debug writefln("-> ver=%d, cmd=%d, rsv=%d, atyp=%d, dstaddr=%s, dstport=%d",
-                packet3.ver, packet3.cmd, packet3.rsv, packet3.atyp, packet3.dstaddr, packet3.dstport);
-
-            targetSocket = connectToTarget(targetAddress);
-            packet4.setBindAddress(targetSocket.localAddress);
-
-            debug writefln("Local target: %s", targetSocket.localAddress.toAddrString());
-            //debug writefln("Local target port: %d",	targetSocket.localAddress.toPortString());
-            socket.send((&packet4)[0..1]);
-
-            debug writefln("<-(%d bytes) ver=%d, rep=%d, rsv=%d, atyp=%d, bndaddr=%s, bndport=%d",
-                packet4.sizeof,
-                packet4.ver, packet4.rep, packet4.rsv, packet4.atyp, packet4.bndaddr, packet4.bndport);
 
             targetToClientSession(socket, targetSocket);
         }
@@ -67,18 +93,47 @@ class Client : Thread
         MethodIdentificationPacket packet;
         packet.receive(socket);
 
-        debug writefln("-> ver = %d, nmethods = %d", packet.ver, packet.nmethods);
-        debug writefln("-> Proposed methods: %s", to!string(packet.methods));
+        tracef("[%d] -> ver = %d, nmethods = %d", id, packet.ver, packet.nmethods);
+        tracef("[%d] -> Proposed methods: %s", id, to!string(packet.methods));
 
         MethodSelectionPacket packet2;
 
         packet2.method = packet.detectAuthMethod(availableMethods);
 
-        debug writefln("<- ver = %d, chosen method = %d", packet2.ver, packet2.method);
+        tracef("[%d] <- ver = %d, chosen method = %d", id, packet2.ver, packet2.method);
         socket.send((&packet2)[0..1]);
 
         if (packet2.method == AuthMethod.NOTAVAILABLE) {
             return false;
+        }
+
+        if (packet2.method == AuthMethod.AUTH) {
+            AuthPacket authPacket;
+            AuthStatusPacket authStatus;
+
+            authPacket.receive(socket);
+            tracef("[%d] -> ver = %d, ulen=%d, uname=%s, plen=%d, passwd=%s", id,
+                authPacket.ver, authPacket.ulen, authPacket.uname, authPacket.plen,
+                authPacket.passwd
+            );
+            tracef("[%d] Client auth with credentials: %s:%s", id,
+                authPacket.getUsername(), authPacket.getPassword()
+            );
+
+            if (authPacket.getUsername() == "username" && authPacket.getPassword() == "1234") {
+                authStatus.status = 0x00;
+                socket.send((&authStatus)[0..1]);
+                tracef("[%d] (%d) <- ver = %d, status=%d", id,
+                    authStatus.sizeof, authStatus.ver, authStatus.status
+                );
+
+                return true;
+            } else {
+                authStatus.status = 0x01;
+                socket.send((&authStatus)[0..1]);
+
+                return false;
+            }
         }
 
         return true;
@@ -87,7 +142,7 @@ class Client : Thread
     Socket connectToTarget(InternetAddress address)
     {
         auto targetSock = new TcpSocket;
-        writefln("Connecting to target %s:%d", address.toAddrString(), address.port);
+        tracef("[%d] Connecting to target %s:%d", id, address.toAddrString(), address.port);
         targetSock.connect(address);
         assert(targetSock.isAlive);
 
@@ -99,29 +154,27 @@ class Client : Thread
         auto sset = new SocketSet(2);
         ubyte[1024*8] buffer;
         ptrdiff_t received;
-        debug {
-            int bytesToClient;
-             int bytesToClientLogThreshold = 1024*128;
-            int bytesToTarget;
-            int bytesToTargetLogThreshold = 1024*8;
-        }
+        int bytesToClient;
+        int bytesToClientLogThreshold = 1024*128;
+        int bytesToTarget;
+        int bytesToTargetLogThreshold = 1024*8;
 
         for (;; sset.reset()) {
             sset.add(clientSocket);
             sset.add(targetSocket);
 
             if (Socket.select(sset, null, null) <= 0) {
-                debug writeln("End of data transfer");
+                infof("[%d] End of data transfer", id);
                 break;
             }
 
             if (sset.isSet(clientSocket)) {
                 received = clientSocket.receive(buffer);
                 if (received == Socket.ERROR) {
-                    debug writeln("Connection error on clientSocket.");
+                    warningf("[%d] Connection error on clientSocket.", id);
                     break;
                 } else if (received == 0) {
-                    debug writeln("Client connection closed.");
+                    infof("[%d] Client connection closed.", id);
                     break;
                 }
 
@@ -129,7 +182,7 @@ class Client : Thread
                 debug {
                     bytesToTarget += received;
                     if (bytesToTarget >= bytesToTargetLogThreshold) {
-                        writefln("<- %d bytes sent to target", bytesToTarget);
+                        tracef("[%d] <- %d bytes sent to target", id, bytesToTarget);
                         bytesToTarget -= bytesToTargetLogThreshold;
                     }
                 }
@@ -138,20 +191,19 @@ class Client : Thread
             if (sset.isSet(targetSocket)) {
                 received = targetSocket.receive(buffer);
                 if (received == Socket.ERROR) {
-                    debug writeln("Connection error on targetSocket.");
+                    warningf("[%d] Connection error on targetSocket.", id);
                     break;
                 } else if (received == 0) {
-                    debug writeln("Target connection closed.");
+                    infof("[%d] Target connection closed.", id);
                     break;
                 }
 
                 clientSocket.send(buffer[0..received]);
-                debug {
-                    bytesToClient += received;
-                    if (bytesToClient >= bytesToClientLogThreshold) {
-                        writefln("<- %d bytes sent to client", bytesToClient);
-                        bytesToClient -= bytesToClientLogThreshold;
-                    }
+
+                bytesToClient += received;
+                if (bytesToClient >= bytesToClientLogThreshold) {
+                    tracef("[%d] <- %d bytes sent to client", id, bytesToClient);
+                    bytesToClient -= bytesToClientLogThreshold;
                 }
             }
 

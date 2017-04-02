@@ -3,6 +3,7 @@ module socks5d.server;
 import socks5d.client;
 import core.thread : Thread;
 import std.socket, std.stdio;
+import std.experimental.logger;
 
 class Server : Thread
 {
@@ -12,6 +13,7 @@ class Server : Thread
         int backlog;
         Socket socket;
         Client[] clients;
+        uint clientCounter = 0;
 
     public:
         this(string address, ushort port = 1080, int backlog = 10)
@@ -30,7 +32,7 @@ class Server : Thread
             socket.bind(new InternetAddress(address, port));
             socket.listen(backlog);
 
-            writefln("Listening on %s:%d", socket.localAddress().toAddrString(), port);
+            criticalf("Listening on %s", socket.localAddress().toString());
 
             while (true) {
                 acceptClient();
@@ -43,7 +45,9 @@ class Server : Thread
         auto clientSocket = socket.accept();
         assert(clientSocket.isAlive);
         assert(socket.isAlive);
-        auto client = new Client(clientSocket);
+
+        clientCounter++;
+        auto client = new Client(clientSocket, clientCounter);
         clients ~= client;
         client.start();
     }
