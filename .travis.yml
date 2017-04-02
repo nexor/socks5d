@@ -1,7 +1,12 @@
 language: d
+
 d:
- - dmd-2.073.1
- - ldc-1.1.0
- - ldc-1.0.0
+  - dmd-2.073.1
+  - ldc-1.1.0
+  - ldc-1.0.0
+
 script:
- - dub build
+  - dub build
+
+notifications:
+  email: false
