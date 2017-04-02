@@ -11,7 +11,7 @@ class Client : Thread
         uint         id;
         Socket       socket;
         Socket		 targetSocket;
-        AuthMethod[] availableMethods = [ AuthMethod.NoAUTH ];
+        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
 
     public:
         this(Socket clientSocket, uint id)
