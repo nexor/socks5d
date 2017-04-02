@@ -36,9 +36,7 @@ class Client : Thread
                     return;
                 }
 
-
                 infof("[%d] Client successfully authenticated.", id);
-
 
                 RequestPacket packet3;
                 ResponsePacket packet4;
@@ -46,7 +44,7 @@ class Client : Thread
 
                 try {
                     targetAddress = packet3.receive(socket);
-                    tracef("[%d] -> ver=%d, cmd=%d, rsv=%d, atyp=%d, dstaddr=%s, dstport=%d", id,
+                    tracef("[%d] -> ver=%d, cmd=%d, rsv=%d, atyp=%d, dstaddr=%s, dstport=%s", id,
                         packet3.ver, packet3.cmd, packet3.rsv, packet3.atyp, packet3.dstAddressString(),
                         packet3.dstport
                     );
@@ -63,7 +61,6 @@ class Client : Thread
 
                     throw e;
                 }
-
 
                 targetSocket = connectToTarget(targetAddress);
                 packet4.setBindAddress(targetSocket.localAddress);

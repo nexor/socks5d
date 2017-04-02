@@ -52,12 +52,11 @@ auto get(T)(Socket s)
 // read from socket into variable length buffer
 void getv(alias TLEN, alias TBUF)(Socket s)
 {
-    TLEN = get!ubyte(s);
+    TLEN = s.get!ubyte;
     TBUF = new ubyte[TLEN];
 
     s.receive(TBUF);
 }
-
 
 mixin template SocksVersion()
 {
@@ -65,16 +64,10 @@ mixin template SocksVersion()
 
     void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
     {
-        ver = get!ubyte(socket);
+        ver = socket.get!ubyte;
         if (ver != requiredVersion) {
-            throw new SocksException("Incorrect protocol version: " ~ to!string(ver));
+            throw new SocksException("Incorrect protocol version: " ~ ver.to!string);
         }
-    }
-
-    void dumpByte(Socket socket)
-    {
-        auto bt = get!ubyte(socket);
-        std.stdio.writeln("Byte = " ~ to!string(bt));
     }
 }
 
@@ -171,7 +164,7 @@ struct RequestPacket
     ubyte       rsv = 0x00;
     AddressType atyp;
     ubyte[]     dstaddr;
-    ushort      dstport;
+    ubyte[2]    dstport;
 
     private InternetAddress address;
 
@@ -180,7 +173,7 @@ struct RequestPacket
     {
         receiveVersion(socket);
         readRequestCommand(socket);
-        rsv = get!ubyte(socket);
+        rsv = socket.get!ubyte;
         address = readAddressAndPort(socket);
 
         return address;
@@ -188,31 +181,31 @@ struct RequestPacket
 
     void readRequestCommand(Socket socket)
     {
-        cmd = get!RequestCmd(socket);
+        cmd = socket.get!RequestCmd;
         if (cmd != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
-                "Only CONNECT method is supported, given " ~ to!string(cmd));
+                "Only CONNECT method is supported, given " ~ cmd.to!string);
         }
     }
 
     InternetAddress readAddressAndPort(Socket socket)
     {
-        atyp = get!AddressType(socket);
+        atyp = socket.get!AddressType;
 
         switch (atyp) {
             case AddressType.IPV4:
-                ubyte length = 4;
-                getv!(length, dstaddr)(socket);
-                dstport = swapEndian(get!ushort(socket));
+                dstaddr = new ubyte[4];
+                socket.receive(dstaddr);
+                socket.receive(dstport);
 
-                return new InternetAddress(dstaddr.read!uint(), dstport);
+                return new InternetAddress(dstaddr.read!uint, dstport.bigEndianToNative!ushort);
 
             case AddressType.DOMAIN:
                 ubyte length;
                 getv!(length, dstaddr)(socket);
-                dstport = swapEndian(get!ushort(socket));
+                socket.receive(dstport);
 
-                return new InternetAddress(cast(char[])dstaddr, dstport);
+                return new InternetAddress(cast(char[])dstaddr, dstport.bigEndianToNative!ushort);
 
             case AddressType.IPV6:
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "AddressType=ipv6 is not supported");
@@ -249,7 +242,7 @@ align(2) struct ResponsePacket
         auto saddr_ptr = address.name;
         auto in_ptr = *(cast(sockaddr_in*) saddr_ptr);
 
-        bndport = to!ushort(address.toPortString());
+        bndport = address.toPortString().to!ushort;
         bndaddr = in_ptr.sin_addr.s_addr;
 
         return true;
