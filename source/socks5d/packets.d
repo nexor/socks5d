@@ -157,14 +157,11 @@ struct AuthPacket
         socket.receiveVariableBuffer!(plen, passwd);
     }
 
-    string getUsername()
+    string getAuthString()
     {
-        return to!string( cast(char[])uname );
-    }
+        import std.format : format;
 
-    string getPassword()
-    {
-        return to!string( cast(char[])passwd );
+        return format("%s:%s", cast(char[])uname, cast(char[])passwd ) ;
     }
 }
 

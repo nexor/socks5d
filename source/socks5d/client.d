@@ -11,7 +11,8 @@ class Client : Thread
         uint         id;
         Socket       socket;
         Socket		 targetSocket;
-        AuthMethod[] availableMethods = [ AuthMethod.AUTH ];
+        string       authString;
+        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
 
     public:
         this(Socket clientSocket, uint id)
@@ -19,6 +20,14 @@ class Client : Thread
             socket = clientSocket;
             this.id = id;
             super(&run);
+        }
+
+        void setAuthString(string authString)
+        {
+            if (authString.length > 1) {
+                this.authString = authString;
+                availableMethods = [ AuthMethod.AUTH ];
+            }
         }
 
         final void run()
@@ -75,11 +84,9 @@ class Client : Thread
 
                 authPacket.receive(socket);
                 tracef("[%d] -> %s", id, authPacket.printFields);
-                tracef("[%d] Client auth with credentials: %s:%s", id,
-                    authPacket.getUsername(), authPacket.getPassword()
-                );
+                tracef("[%d] Client auth with credentials: %s", id, authPacket.getAuthString());
 
-                if (authPacket.getUsername() == "username" && authPacket.getPassword() == "1234") {
+                if (authPacket.getAuthString() == authString) {
                     authStatus.status = 0x00;
                     tracef("[%d] <- %s", id, authStatus.printFields);
                     socket.send((&authStatus)[0..1]);

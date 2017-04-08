@@ -8,7 +8,8 @@ immutable ushort defaultPort = 1080;
 
 ushort port = defaultPort;
 string address = defaultAddress;
-byte  verbosity; // log verbosity level
+string authString;
+byte   verbosity; // log verbosity level
 bool   ver;
 
 int main(string[] args)
@@ -46,6 +47,7 @@ void startServer(string address, ushort port)
     logf(LogLevel.critical, "Starting socks5d server v. %s", versionString);
 
     auto server = new Server(address, port);
+    server.setAuthString(authString);
     server.start();
 }
 
@@ -60,10 +62,11 @@ bool processHelpInformation(string[] args)
         std.getopt.config.caseSensitive,
         "address", "[IP address] Address to bind to (" ~ defaultAddress ~ " by default).",   &address,
         "port",    "[1..65535] Port number to listen to (" ~ to!string(defaultPort) ~ " by default).", &port,
+        "auth",    "[login:password] Authentication string if required.",  &authString,
 
         "version|V",  "Print version and exit.",     &ver,
         "verbose|v",  "[0..3] Use verbose output level. Available levels: " ~
-            "0(default, least verbose), 1, 2, 3(most verbose)",         &verbosity
+            "0(default, least verbose), 1, 2, 3(most verbose).",         &verbosity
     );
 
     if (ver) {

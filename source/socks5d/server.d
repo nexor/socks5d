@@ -10,6 +10,7 @@ class Server : Thread
     private:
         string address;
         ushort port;
+        string authString;
         int backlog;
         Socket socket;
         Client[] clients;
@@ -23,6 +24,14 @@ class Server : Thread
             this.backlog = backlog;
 
             super(&run);
+        }
+
+        void setAuthString(string authString)
+        {
+            this.authString = authString;
+            if (authString.length > 1) {
+                warningf("Using authentication string: %s", authString);
+            }
         }
 
         final void run()
@@ -48,6 +57,7 @@ class Server : Thread
 
         clientCounter++;
         auto client = new Client(clientSocket, clientCounter);
+        client.setAuthString(authString);
         clients ~= client;
         client.start();
     }
