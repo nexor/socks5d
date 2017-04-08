@@ -1,7 +1,7 @@
 module socks5d.client;
 
 import core.thread : Thread;
-import std.stdio, std.socket, std.conv;
+import std.socket;
 import socks5d.packets;
 import std.experimental.logger;
 

@@ -1,10 +1,8 @@
 module socks5d.packets;
 
 import std.socket;
-import std.algorithm;
 import std.bitmanip;
 import std.conv;
-import std.c.linux.socket: sockaddr_in, in_addr;
 
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
@@ -121,6 +119,8 @@ struct MethodIdentificationPacket
 
     AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
     {
+        import std.algorithm;
+
         foreach (AuthMethod method; availableMethods) {
             if (methods.canFind(method)) {
                 return method;
@@ -232,6 +232,8 @@ struct RequestPacket
 
 align(2) struct ResponsePacket
 {
+    import core.sys.posix.netinet.in_;
+
     mixin SocksVersion;
     ReplyCode   rep = ReplyCode.SUCCEEDED;
     ubyte[1]    rsv = [0x00];
