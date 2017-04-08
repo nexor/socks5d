@@ -36,38 +36,50 @@ enum ReplyCode : ubyte {
     ADDR_NOTSUPPORTED = 0x08
 }
 
-auto get(T)(Socket s)
+string printFields(T)(T args)
 {
-    union buffer {
-        ubyte[T.sizeof] b;
-        T v;
+    import std.format : format;
+
+    string result = typeid(T).toString() ~ ": ";
+    auto values = args.tupleof;
+
+    size_t max;
+    size_t temp;
+    foreach (index, value; values) {
+        temp = T.tupleof[index].stringof.length;
+        if (max < temp) max = temp;
     }
-    buffer buf;
+    max += 1;
+    foreach (index, value; values) {
+        result ~= format("%s=%s ", T.tupleof[index].stringof, value);
+    }
 
-    s.receive(buf.b);
-
-    return buf.v;
+    return result;
 }
 
-// read from socket into variable length buffer
-void getv(alias TLEN, alias TBUF)(Socket s)
+void receiveVariableBuffer(alias TLEN, alias TBUF)(Socket s)
 {
-    TLEN = s.get!ubyte;
-    TBUF = new ubyte[TLEN];
+    s.receive(TLEN);
+    TBUF = new ubyte[TLEN[0]];
 
     s.receive(TBUF);
 }
 
 mixin template SocksVersion()
 {
-    ubyte ver; //should be 0x05 (or 0x01 for auth)
+    ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
 
     void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
     {
-        ver = socket.get!ubyte;
-        if (ver != requiredVersion) {
-            throw new SocksException("Incorrect protocol version: " ~ ver.to!string);
+        socket.receive(ver);
+        if (ver[0] != requiredVersion) {
+            throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
         }
+    }
+
+    ubyte getVersion()
+    {
+        return ver[0];
     }
 }
 
@@ -97,14 +109,14 @@ class RequestException : SocksException
 
 struct MethodIdentificationPacket
 {
-    mixin   SocksVersion;
-    ubyte   nmethods;
-    ubyte[] methods;
+    mixin    SocksVersion;
+    ubyte[1] nmethods;
+    ubyte[]  methods;
 
     void receive(Socket socket)
     {
         receiveVersion(socket);
-        getv!(nmethods, methods)(socket);
+        socket.receiveVariableBuffer!(nmethods, methods);
     }
 
     AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
@@ -117,27 +129,32 @@ struct MethodIdentificationPacket
 
         return AuthMethod.NOTAVAILABLE;
     }
+
+    ubyte getNMethods()
+    {
+        return nmethods[0];
+    }
 }
 
 struct MethodSelectionPacket
 {
-    ubyte ver = 0x05;
+    mixin SocksVersion;
     ubyte method;
 }
 
 struct AuthPacket
 {
-    mixin   SocksVersion;
-    ubyte   ulen;
-    ubyte[] uname;
-    ubyte   plen;
-    ubyte[] passwd;
+    mixin     SocksVersion;
+    ubyte[1]  ulen;
+    ubyte[]   uname;
+    ubyte[1]  plen;
+    ubyte[]   passwd;
 
     void receive(Socket socket)
     {
         receiveVersion(socket, 0x01);
-        getv!(ulen, uname)(socket);
-        getv!(plen, passwd)(socket);
+        socket.receiveVariableBuffer!(ulen, uname);
+        socket.receiveVariableBuffer!(plen, passwd);
     }
 
     string getUsername()
@@ -153,46 +170,46 @@ struct AuthPacket
 
 struct AuthStatusPacket
 {
-    ubyte ver = 0x05;
+    mixin SocksVersion;
     ubyte status = 0x00;
 }
 
 struct RequestPacket
 {
     mixin SocksVersion;
-    RequestCmd  cmd;
-    ubyte       rsv = 0x00;
-    AddressType atyp;
-    ubyte[]     dstaddr;
-    ubyte[2]    dstport;
-
-    private InternetAddress address;
+    RequestCmd[1]  cmd;
+    ubyte[1]       rsv;
+    AddressType[1] atyp;
+    ubyte[]        dstaddr;
+    ubyte[2]       dstport;
 
     // fill structure with data from socket
     InternetAddress receive(Socket socket)
     {
         receiveVersion(socket);
         readRequestCommand(socket);
-        rsv = socket.get!ubyte;
-        address = readAddressAndPort(socket);
+        socket.receive(rsv);
+        if (rsv[0] != 0x00) {
+            throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
+        }
 
-        return address;
+        return readAddressAndPort(socket);
     }
 
     void readRequestCommand(Socket socket)
     {
-        cmd = socket.get!RequestCmd;
-        if (cmd != RequestCmd.CONNECT) {
+        socket.receive(cmd);
+        if (cmd[0] != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
-                "Only CONNECT method is supported, given " ~ cmd.to!string);
+                "Only CONNECT method is supported, given " ~ cmd[0].to!string);
         }
     }
 
     InternetAddress readAddressAndPort(Socket socket)
     {
-        atyp = socket.get!AddressType;
+        socket.receive(atyp);
 
-        switch (atyp) {
+        switch (atyp[0]) {
             case AddressType.IPV4:
                 dstaddr = new ubyte[4];
                 socket.receive(dstaddr);
@@ -201,8 +218,8 @@ struct RequestPacket
                 return new InternetAddress(dstaddr.read!uint, dstport.bigEndianToNative!ushort);
 
             case AddressType.DOMAIN:
-                ubyte length;
-                getv!(length, dstaddr)(socket);
+                ubyte[1] length;
+                socket.receiveVariableBuffer!(length, dstaddr);
                 socket.receive(dstport);
 
                 return new InternetAddress(cast(char[])dstaddr, dstport.bigEndianToNative!ushort);
@@ -211,28 +228,16 @@ struct RequestPacket
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "AddressType=ipv6 is not supported");
 
             default:
-                throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp);
+                throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp[0]);
         }
-    }
-
-    string dstAddressString()
-    {
-        if (atyp == AddressType.IPV4) {
-            return address.toAddrString();
-        }
-        if (atyp == AddressType.DOMAIN) {
-            return to!string(cast(char[])dstaddr);
-        }
-
-        return "(unknown)";
     }
 }
 
 align(2) struct ResponsePacket
 {
-    ubyte       ver = 0x05;
-    ReplyCode   rep;
-    ubyte       rsv = 0x00;
+    mixin SocksVersion;
+    ReplyCode   rep = ReplyCode.SUCCEEDED;
+    ubyte[1]    rsv = [0x00];
     AddressType atyp;
     uint        bndaddr;
     ushort      bndport;
