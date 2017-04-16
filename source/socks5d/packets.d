@@ -231,7 +231,7 @@ struct RequestPacket
         return readAddressAndPort(socket);
     }
 
-    void readRequestCommand(Socket socket)
+    private void readRequestCommand(Socket socket)
     {
         socket.receive(cmd);
         if (cmd[0] != RequestCmd.CONNECT) {
@@ -240,7 +240,7 @@ struct RequestPacket
         }
     }
 
-    InternetAddress readAddressAndPort(Socket socket)
+    private InternetAddress readAddressAndPort(Socket socket)
     {
         socket.receive(atyp);
 
@@ -267,18 +267,46 @@ struct RequestPacket
         }
     }
 
+    /// test IPv4 address type
     unittest
     {
         RequestPacket packet;
         auto sp = socketPair();
         immutable ubyte[] input = [
-            0x05
+            0x05,
+            0x01,
+            0x00,
+            AddressType.IPV4,
+            10, 0, 35, 94,
+            0x00, 0x50 // port 80
         ];
 
         sp[0].send(input);
-        //packet.receive(sp[1]);
+        auto address = packet.receive(sp[1]);
 
-        //assert(packet.getVersion() == 5);
+        assert(packet.getVersion() == 5);
+        assert(address.toString() == "10.0.35.94:80");
+    }
+
+    /// test domain address type
+    unittest
+    {
+        RequestPacket packet;
+        auto sp = socketPair();
+        immutable ubyte[] input = [
+            0x05,
+            0x01,
+            0x00,
+            AddressType.DOMAIN,
+            9, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
+            0x00, 0x50 // port 80
+        ];
+
+        sp[0].send(input);
+        auto address = packet.receive(sp[1]);
+
+        assert(packet.getVersion() == 5);
+        assert(address.toString() == "127.0.0.1:80");
     }
 }
 
@@ -290,16 +318,16 @@ align(2) struct ResponsePacket
     ReplyCode   rep = ReplyCode.SUCCEEDED;
     ubyte[1]    rsv = [0x00];
     AddressType atyp;
-    uint        bndaddr;
-    ushort      bndport;
+    ubyte[4]    bndaddr;
+    ubyte[2]    bndport;
 
     bool setBindAddress(Address address)
     {
         auto saddr_ptr = address.name;
         auto in_ptr = *(cast(sockaddr_in*) saddr_ptr);
 
-        bndport = address.toPortString().to!ushort;
-        bndaddr = in_ptr.sin_addr.s_addr;
+        bndport = nativeToBigEndian(address.toPortString().to!ushort);
+        bndaddr = nativeToBigEndian(in_ptr.sin_addr.s_addr);
 
         return true;
     }
@@ -311,12 +339,16 @@ align(2) struct ResponsePacket
         immutable ubyte[] output = [
             0x05,
             ReplyCode.SUCCEEDED,
-            0x00
-            //@todo atyp, bndaddr, bndport
+            0x00,
+            AddressType.IPV4,
+            1, 0, 0, 127, // 127.0.0.1
+            0x00, 0x51    // port 81
         ];
 
+        packet.setBindAddress(new InternetAddress("127.0.0.1", 81));
+
         sp[0].send((&packet)[0..1]);
-        ubyte[3] buf;
+        ubyte[output.length] buf;
         sp[1].receive(buf);
 
         assert(buf == output);
