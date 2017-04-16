@@ -55,12 +55,12 @@ string printFields(T)(T args)
     return result;
 }
 
-void receiveVariableBuffer(alias TLEN, alias TBUF)(Socket s)
+long receiveVariableBuffer(alias TLEN, alias TBUF)(Socket s)
 {
     s.receive(TLEN);
     TBUF = new ubyte[TLEN[0]];
 
-    s.receive(TBUF);
+    return s.receive(TBUF);
 }
 
 mixin template SocksVersion()
@@ -134,6 +134,25 @@ struct MethodIdentificationPacket
     {
         return nmethods[0];
     }
+
+    unittest
+    {
+        MethodIdentificationPacket packet;
+        auto sp = socketPair();
+        immutable ubyte[] input = [
+            0x05,
+            0x01,
+            AuthMethod.NOAUTH
+        ];
+
+        sp[0].send(input);
+        packet.receive(sp[1]);
+
+        assert(packet.getVersion() == 5);
+        assert(packet.getNMethods() == 1);
+        assert(packet.detectAuthMethod([AuthMethod.NOAUTH]) == AuthMethod.NOAUTH);
+        assert(packet.detectAuthMethod([AuthMethod.AUTH]) == AuthMethod.NOTAVAILABLE);
+    }
 }
 
 struct MethodSelectionPacket
@@ -162,6 +181,25 @@ struct AuthPacket
         import std.format : format;
 
         return format("%s:%s", cast(char[])uname, cast(char[])passwd ) ;
+    }
+
+    unittest
+    {
+        AuthPacket packet;
+        auto sp = socketPair();
+        immutable ubyte[] input = [
+            0x01,
+            5,
+            't', 'u', 's', 'e', 'r',
+            7,
+            't', 'p', 'a', 's', 's', 'w', 'd'
+        ];
+
+        sp[0].send(input);
+        packet.receive(sp[1]);
+
+        assert(packet.getVersion() == 1);
+        assert(packet.getAuthString() == "tuser:tpasswd");
     }
 }
 
@@ -228,6 +266,20 @@ struct RequestPacket
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp[0]);
         }
     }
+
+    unittest
+    {
+        RequestPacket packet;
+        auto sp = socketPair();
+        immutable ubyte[] input = [
+            0x05
+        ];
+
+        sp[0].send(input);
+        //packet.receive(sp[1]);
+
+        //assert(packet.getVersion() == 5);
+    }
 }
 
 align(2) struct ResponsePacket
@@ -250,5 +302,23 @@ align(2) struct ResponsePacket
         bndaddr = in_ptr.sin_addr.s_addr;
 
         return true;
+    }
+
+    unittest
+    {
+        ResponsePacket packet;
+        auto sp = socketPair();
+        immutable ubyte[] output = [
+            0x05,
+            ReplyCode.SUCCEEDED,
+            0x00
+            //@todo atyp, bndaddr, bndport
+        ];
+
+        sp[0].send((&packet)[0..1]);
+        ubyte[3] buf;
+        sp[1].receive(buf);
+
+        assert(buf == output);
     }
 }

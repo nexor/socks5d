@@ -6,7 +6,7 @@ d:
   - ldc-1.0.0
 
 script:
-  - dub build
+  - dub test
 
 notifications:
   email: false
