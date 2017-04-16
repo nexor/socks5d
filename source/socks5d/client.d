@@ -1,11 +1,10 @@
 module socks5d.client;
 
-import core.thread : Thread;
 import std.socket;
 import socks5d.packets;
 import std.experimental.logger;
 
-class Client : Thread
+class Client
 {
     protected:
         uint         id;
@@ -19,7 +18,6 @@ class Client : Thread
         {
             socket = clientSocket;
             this.id = id;
-            super(&run);
         }
 
         void setAuthString(string authString)
@@ -33,8 +31,6 @@ class Client : Thread
         final void run()
         {
             warningf("[%d] New client accepted: %s", id, socket.remoteAddress().toString());
-
-
 
             try {
                 if (authenticate()) {
@@ -55,8 +51,6 @@ class Client : Thread
             } catch (SocksException e) {
                 errorf("Error: %s", e.msg);
                 socket.close();
-
-                return;
             }
         }
 
@@ -201,8 +195,6 @@ class Client : Thread
                         bytesToClient -= bytesToClientLogThreshold;
                     }
                 }
-
-                Thread.yield();
             }
 
             clientSocket.close();

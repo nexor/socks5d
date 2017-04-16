@@ -1,6 +1,7 @@
 import std.stdio, std.getopt;
 import socks5d.server;
 import std.experimental.logger;
+import core.thread : Thread;
 
 immutable string versionString = "0.0.1";
 immutable string defaultAddress = "127.0.0.1";
@@ -14,7 +15,6 @@ bool   ver;
 
 int main(string[] args)
 {
-
     if (processHelpInformation(args)) {
         return 0;
     }
@@ -46,9 +46,11 @@ void startServer(string address, ushort port)
 {
     logf(LogLevel.critical, "Starting socks5d server v. %s", versionString);
 
-    auto server = new Server(address, port);
-    server.setAuthString(authString);
-    server.start();
+    new Thread({
+        auto server = new Server(address, port);
+        server.setAuthString(authString);
+        server.run();
+    }).start();
 }
 
 

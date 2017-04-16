@@ -1,11 +1,10 @@
 module socks5d.server;
 
 import socks5d.client;
-import core.thread : Thread;
 import std.socket;
 import std.experimental.logger;
 
-class Server : Thread
+class Server
 {
     private:
         string address;
@@ -22,8 +21,6 @@ class Server : Thread
             this.address = address;
             this.port = port;
             this.backlog = backlog;
-
-            super(&run);
         }
 
         void setAuthString(string authString)
@@ -36,29 +33,39 @@ class Server : Thread
 
         final void run()
         {
+            bindSocket();
+
+            while (true) {
+                acceptClient();
+            }
+        }
+
+    protected:
+        void bindSocket()
+        {
+
             socket = new TcpSocket;
             assert(socket.isAlive);
             socket.bind(new InternetAddress(address, port));
             socket.listen(backlog);
 
             criticalf("Listening on %s", socket.localAddress().toString());
-
-            while (true) {
-                acceptClient();
-                Thread.yield();
-            }
         }
 
-    void acceptClient()
-    {
-        auto clientSocket = socket.accept();
-        assert(clientSocket.isAlive);
-        assert(socket.isAlive);
+        void acceptClient()
+        {
+            import core.thread : Thread;
 
-        clientCounter++;
-        auto client = new Client(clientSocket, clientCounter);
-        client.setAuthString(authString);
-        clients ~= client;
-        client.start();
-    }
+            auto clientSocket = socket.accept();
+            assert(clientSocket.isAlive);
+            assert(socket.isAlive);
+
+            clientCounter++;
+            new Thread({
+                auto client = new Client(clientSocket, clientCounter);
+                client.setAuthString(authString);
+                clients ~= client;
+                client.run();
+            }).start();
+        }
 }
