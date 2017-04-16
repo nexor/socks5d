@@ -312,8 +312,6 @@ struct RequestPacket
 
 align(2) struct ResponsePacket
 {
-    import core.sys.posix.netinet.in_;
-
     mixin SocksVersion;
     ReplyCode   rep = ReplyCode.SUCCEEDED;
     ubyte[1]    rsv = [0x00];
@@ -321,13 +319,10 @@ align(2) struct ResponsePacket
     ubyte[4]    bndaddr;
     ubyte[2]    bndport;
 
-    bool setBindAddress(Address address)
+    bool setBindAddress(InternetAddress address)
     {
-        auto saddr_ptr = address.name;
-        auto in_ptr = *(cast(sockaddr_in*) saddr_ptr);
-
-        bndport = nativeToBigEndian(address.toPortString().to!ushort);
-        bndaddr = nativeToBigEndian(in_ptr.sin_addr.s_addr);
+        bndport = nativeToBigEndian(address.port);
+        bndaddr = nativeToBigEndian(address.addr);
 
         return true;
     }
@@ -341,7 +336,7 @@ align(2) struct ResponsePacket
             ReplyCode.SUCCEEDED,
             0x00,
             AddressType.IPV4,
-            1, 0, 0, 127, // 127.0.0.1
+            127, 0, 0, 1, // 127.0.0.1
             0x00, 0x51    // port 81
         ];
 

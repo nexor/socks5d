@@ -9,7 +9,7 @@ class Client
     protected:
         uint         id;
         Socket       socket;
-        Socket		 targetSocket;
+        TcpSocket	 targetSocket;
         string       authString;
         AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
 
@@ -119,7 +119,7 @@ class Client
             targetSocket = connectToTarget(targetAddress);
 
             packet4.atyp = AddressType.IPV4;
-            packet4.setBindAddress(targetSocket.localAddress);
+            packet4.setBindAddress(cast(InternetAddress)targetSocket.localAddress);
 
             tracef("[%d] Local target address: %s", id, targetSocket.localAddress.toString());
             tracef("[%d] <- %s", id, packet4.printFields);
@@ -128,7 +128,7 @@ class Client
             return true;
         }
 
-        Socket connectToTarget(InternetAddress address)
+        TcpSocket connectToTarget(InternetAddress address)
         {
             auto targetSock = new TcpSocket;
             tracef("[%d] Connecting to target %s", id, address.toString());
