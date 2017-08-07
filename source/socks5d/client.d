@@ -57,13 +57,13 @@ class Client
     protected:
         bool authenticate()
         {
-            MethodIdentificationPacket packet;
-            packet.receive(socket);
-            tracef("[%d] -> %s", id, packet.printFields);
+            auto identificationPacket = new MethodIdentificationPacket;
+            identificationPacket.receive(socket);
+            tracef("[%d] -> %s", id, identificationPacket.printFields);
 
             auto packet2 = new MethodSelectionPacket;
 
-            packet2.method = packet.detectAuthMethod(availableMethods);
+            packet2.method = identificationPacket.detectAuthMethod(availableMethods);
 
             tracef("[%d] <- %s", id, packet2.printFields);
             packet2.send(socket);
@@ -73,7 +73,7 @@ class Client
             }
 
             if (packet2.method == AuthMethod.AUTH) {
-                AuthPacket authPacket;
+                auto authPacket = new AuthPacket;
                 auto authStatus = new AuthStatusPacket;
 
                 authPacket.receive(socket);
@@ -99,31 +99,31 @@ class Client
 
         bool handshake()
         {
-            RequestPacket   requestPacket;
-            ResponsePacket  packet4;
+            auto requestPacket = new RequestPacket;
+            auto packet4 = new ResponsePacket;
             InternetAddress targetAddress;
 
             try {
-                targetAddress = requestPacket.receive(socket);
+                requestPacket.receive(socket);
             } catch (RequestException e) {
                 errorf("Error: %s", e.msg);
                 packet4.rep = e.replyCode;
                 tracef("[%d] <- %s", id, packet4.printFields);
-                socket.send((&packet4)[0..1]);
+                packet4.send(socket);
 
                 return false;
             }
 
             tracef("[%d] -> %s", id, requestPacket.printFields);
 
-            targetSocket = connectToTarget(targetAddress);
+            targetSocket = connectToTarget(requestPacket.getDestinationAddress());
 
             packet4.atyp = AddressType.IPV4;
             packet4.setBindAddress(cast(InternetAddress)targetSocket.localAddress);
 
             tracef("[%d] Local target address: %s", id, targetSocket.localAddress.toString());
             tracef("[%d] <- %s", id, packet4.printFields);
-            socket.send((&packet4)[0..1]);
+            packet4.send(socket);
 
             return true;
         }

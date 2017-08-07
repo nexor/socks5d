@@ -63,24 +63,6 @@ long receiveVariableBuffer(alias TLEN, alias TBUF)(Socket s)
     return s.receive(TBUF);
 }
 
-mixin template SocksVersion()
-{
-    ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
-
-    void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
-    {
-        socket.receive(ver);
-        if (ver[0] != requiredVersion) {
-            throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
-        }
-    }
-
-    ubyte getVersion()
-    {
-        return ver[0];
-    }
-}
-
 class SocksException : Exception
 {
     public:
@@ -124,6 +106,8 @@ abstract class IncomingPacket: Socks5Packet
             throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
         }
     }
+
+    void receive(Socket s);
 }
 
 abstract class OutgoingPacket: Socks5Packet
@@ -131,13 +115,12 @@ abstract class OutgoingPacket: Socks5Packet
     abstract void send(Socket s);
 }
 
-struct MethodIdentificationPacket
+class MethodIdentificationPacket : IncomingPacket
 {
-    mixin    SocksVersion;
     ubyte[1] nmethods;
     ubyte[]  methods;
 
-    void receive(Socket socket)
+    override void receive(Socket socket)
     {
         receiveVersion(socket);
         socket.receiveVariableBuffer!(nmethods, methods);
@@ -163,7 +146,7 @@ struct MethodIdentificationPacket
 
     unittest
     {
-        MethodIdentificationPacket packet;
+        auto packet = new MethodIdentificationPacket;
         auto sp = socketPair();
         immutable ubyte[] input = [
             0x05,
@@ -192,15 +175,14 @@ class MethodSelectionPacket : OutgoingPacket
     }
 }
 
-struct AuthPacket
+class AuthPacket : IncomingPacket
 {
-    mixin     SocksVersion;
     ubyte[1]  ulen;
     ubyte[]   uname;
     ubyte[1]  plen;
     ubyte[]   passwd;
 
-    void receive(Socket socket)
+    override void receive(Socket socket)
     {
         receiveVersion(socket, 0x01);
         socket.receiveVariableBuffer!(ulen, uname);
@@ -216,7 +198,7 @@ struct AuthPacket
 
     unittest
     {
-        AuthPacket packet;
+        auto packet = new AuthPacket;
         auto sp = socketPair();
         immutable ubyte[] input = [
             0x01,
@@ -245,17 +227,18 @@ class AuthStatusPacket : OutgoingPacket
     }
 }
 
-struct RequestPacket
+class RequestPacket : IncomingPacket
 {
-    mixin SocksVersion;
     RequestCmd[1]  cmd;
     ubyte[1]       rsv;
     AddressType[1] atyp;
     ubyte[]        dstaddr;
     ubyte[2]       dstport;
 
+    private InternetAddress destinationAddress;
+
     // fill structure with data from socket
-    InternetAddress receive(Socket socket)
+    override void receive(Socket socket)
     {
         receiveVersion(socket);
         readRequestCommand(socket);
@@ -264,7 +247,12 @@ struct RequestPacket
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
         }
 
-        return readAddressAndPort(socket);
+        destinationAddress = readAddressAndPort(socket);
+    }
+
+    InternetAddress getDestinationAddress()
+    {
+        return destinationAddress;
     }
 
     private void readRequestCommand(Socket socket)
@@ -306,7 +294,7 @@ struct RequestPacket
     /// test IPv4 address type
     unittest
     {
-        RequestPacket packet;
+        auto packet = new RequestPacket;
         auto sp = socketPair();
         immutable ubyte[] input = [
             0x05,
@@ -318,16 +306,16 @@ struct RequestPacket
         ];
 
         sp[0].send(input);
-        auto address = packet.receive(sp[1]);
+        packet.receive(sp[1]);
 
         assert(packet.getVersion() == 5);
-        assert(address.toString() == "10.0.35.94:80");
+        assert(packet.getDestinationAddress().toString() == "10.0.35.94:80");
     }
 
     /// test domain address type
     unittest
     {
-        RequestPacket packet;
+        auto packet = new RequestPacket;
         auto sp = socketPair();
         immutable ubyte[] input = [
             0x05,
@@ -339,21 +327,30 @@ struct RequestPacket
         ];
 
         sp[0].send(input);
-        auto address = packet.receive(sp[1]);
+        packet.receive(sp[1]);
 
         assert(packet.getVersion() == 5);
-        assert(address.toString() == "127.0.0.1:80");
+        assert(packet.getDestinationAddress().toString() == "127.0.0.1:80");
     }
 }
 
-align(2) struct ResponsePacket
+class ResponsePacket : OutgoingPacket
 {
-    mixin SocksVersion;
     ReplyCode   rep = ReplyCode.SUCCEEDED;
     ubyte[1]    rsv = [0x00];
     AddressType atyp;
     ubyte[4]    bndaddr;
     ubyte[2]    bndport;
+
+    override void send(Socket s)
+    {
+        s.send(ver);
+        s.send((&rep)[0..1]);
+        s.send(rsv);
+        s.send((&atyp)[0..1]);
+        s.send(bndaddr);
+        s.send(bndport);
+    }
 
     bool setBindAddress(InternetAddress address)
     {
@@ -365,7 +362,7 @@ align(2) struct ResponsePacket
 
     unittest
     {
-        ResponsePacket packet;
+        auto packet = new ResponsePacket;
         auto sp = socketPair();
         immutable ubyte[] output = [
             0x05,
@@ -378,7 +375,7 @@ align(2) struct ResponsePacket
 
         packet.setBindAddress(new InternetAddress("127.0.0.1", 81));
 
-        sp[0].send((&packet)[0..1]);
+        packet.send(sp[0]);
         ubyte[output.length] buf;
         sp[1].receive(buf);
 
