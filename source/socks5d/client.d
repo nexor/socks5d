@@ -129,11 +129,12 @@ class Client
         }
 
         TcpSocket connectToTarget(InternetAddress address)
-        {
+        out (targetSock) {
+            assert(targetSock.isAlive);
+        } body {
             auto targetSock = new TcpSocket;
             tracef("[%d] Connecting to target %s", id, address.toString());
             targetSock.connect(address);
-            assert(targetSock.isAlive);
 
             return targetSock;
         }
@@ -143,10 +144,13 @@ class Client
             auto sset = new SocketSet(2);
             ubyte[1024*8] buffer;
             ptrdiff_t received;
-            int bytesToClient;
-            int bytesToClientLogThreshold = 1024*128;
-            int bytesToTarget;
-            int bytesToTargetLogThreshold = 1024*8;
+
+            debug {
+                int bytesToClient;
+                static int bytesToClientLogThreshold = 1024*128;
+                int bytesToTarget;
+                static int bytesToTargetLogThreshold = 1024*8;
+            }
 
             for (;; sset.reset()) {
                 sset.add(clientSocket);
@@ -168,6 +172,7 @@ class Client
                     }
 
                     targetSocket.send(buffer[0..received]);
+
                     debug {
                         bytesToTarget += received;
                         if (bytesToTarget >= bytesToTargetLogThreshold) {
@@ -189,10 +194,12 @@ class Client
 
                     clientSocket.send(buffer[0..received]);
 
-                    bytesToClient += received;
-                    if (bytesToClient >= bytesToClientLogThreshold) {
-                        tracef("[%d] <- %d bytes sent to client", id, bytesToClient);
-                        bytesToClient -= bytesToClientLogThreshold;
+                    debug {
+                        bytesToClient += received;
+                        if (bytesToClient >= bytesToClientLogThreshold) {
+                            tracef("[%d] <- %d bytes sent to client", id, bytesToClient);
+                            bytesToClient -= bytesToClientLogThreshold;
+                        }
                     }
                 }
             }
