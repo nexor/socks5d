@@ -55,14 +55,6 @@ string printFields(T)(T args)
     return result;
 }
 
-long receiveVariableBuffer(alias TLEN, alias TBUF)(Socket s)
-{
-    s.receive(TLEN);
-    TBUF = new ubyte[TLEN[0]];
-
-    return s.receive(TBUF);
-}
-
 class SocksException : Exception
 {
     public:
@@ -107,6 +99,13 @@ abstract class IncomingPacket: Socks5Packet
         }
     }
 
+    void receiveBuffer(Socket s, ref ubyte[1] len, ref ubyte[] buf)
+    {
+        s.receive(len);
+        buf = new ubyte[len[0]];
+        s.receive(buf);
+    }
+
     void receive(Socket s);
 }
 
@@ -123,7 +122,7 @@ class MethodIdentificationPacket : IncomingPacket
     override void receive(Socket socket)
     {
         receiveVersion(socket);
-        socket.receiveVariableBuffer!(nmethods, methods);
+        receiveBuffer(socket, nmethods, methods);
     }
 
     AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
@@ -185,8 +184,8 @@ class AuthPacket : IncomingPacket
     override void receive(Socket socket)
     {
         receiveVersion(socket, 0x01);
-        socket.receiveVariableBuffer!(ulen, uname);
-        socket.receiveVariableBuffer!(plen, passwd);
+        receiveBuffer(socket, ulen, uname);
+        receiveBuffer(socket, plen, passwd);
     }
 
     string getAuthString()
@@ -278,7 +277,7 @@ class RequestPacket : IncomingPacket
 
             case AddressType.DOMAIN:
                 ubyte[1] length;
-                socket.receiveVariableBuffer!(length, dstaddr);
+                receiveBuffer(socket, length, dstaddr);
                 socket.receive(dstport);
 
                 return new InternetAddress(cast(char[])dstaddr, dstport.bigEndianToNative!ushort);
