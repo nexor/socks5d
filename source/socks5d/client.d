@@ -61,12 +61,12 @@ class Client
             packet.receive(socket);
             tracef("[%d] -> %s", id, packet.printFields);
 
-            MethodSelectionPacket packet2;
+            auto packet2 = new MethodSelectionPacket;
 
             packet2.method = packet.detectAuthMethod(availableMethods);
 
             tracef("[%d] <- %s", id, packet2.printFields);
-            socket.send((&packet2)[0..1]);
+            packet2.send(socket);
 
             if (packet2.method == AuthMethod.NOTAVAILABLE) {
                 return false;
@@ -74,7 +74,7 @@ class Client
 
             if (packet2.method == AuthMethod.AUTH) {
                 AuthPacket authPacket;
-                AuthStatusPacket authStatus;
+                auto authStatus = new AuthStatusPacket;
 
                 authPacket.receive(socket);
                 tracef("[%d] -> %s", id, authPacket.printFields);
@@ -83,12 +83,12 @@ class Client
                 if (authPacket.getAuthString() == authString) {
                     authStatus.status = 0x00;
                     tracef("[%d] <- %s", id, authStatus.printFields);
-                    socket.send((&authStatus)[0..1]);
+                    authStatus.send(socket);
 
                     return true;
                 } else {
                     authStatus.status = 0x01;
-                    socket.send((&authStatus)[0..1]);
+                    authStatus.send(socket);
 
                     return false;
                 }

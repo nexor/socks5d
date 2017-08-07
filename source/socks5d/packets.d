@@ -105,6 +105,32 @@ class RequestException : SocksException
         }
 }
 
+abstract class Socks5Packet
+{
+    ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
+
+    ubyte getVersion()
+    {
+        return ver[0];
+    }
+}
+
+abstract class IncomingPacket: Socks5Packet
+{
+    void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
+    {
+        socket.receive(ver);
+        if (ver[0] != requiredVersion) {
+            throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
+        }
+    }
+}
+
+abstract class OutgoingPacket: Socks5Packet
+{
+    abstract void send(Socket s);
+}
+
 struct MethodIdentificationPacket
 {
     mixin    SocksVersion;
@@ -155,10 +181,15 @@ struct MethodIdentificationPacket
     }
 }
 
-struct MethodSelectionPacket
+class MethodSelectionPacket : OutgoingPacket
 {
-    mixin SocksVersion;
     ubyte method;
+
+    override void send(Socket s)
+    {
+        s.send(ver);
+        s.send((&method)[0..1]);
+    }
 }
 
 struct AuthPacket
@@ -203,10 +234,15 @@ struct AuthPacket
     }
 }
 
-struct AuthStatusPacket
+class AuthStatusPacket : OutgoingPacket
 {
-    mixin SocksVersion;
     ubyte status = 0x00;
+
+    override void send(Socket s)
+    {
+        s.send(ver);
+        s.send((&status)[0..1]);
+    }
 }
 
 struct RequestPacket
