@@ -1,5 +1,9 @@
 {
 	"fileVersion": 1,
 	"versions": {
+		"libinputvisitor": "1.2.2",
+		"sdlang-d": "0.10.1",
+		"taggedalgebraic": "0.10.7",
+		"unit-threaded": "0.6.36"
 	}
 }

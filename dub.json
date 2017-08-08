@@ -4,6 +4,8 @@
     "authors": ["Pavel Chebotarev"],
     "license": "MIT",
     "dependencies": {
-
+        "sdlang-d": {
+	    "version" : "~>0.10.0"
+	}
     }
 }
