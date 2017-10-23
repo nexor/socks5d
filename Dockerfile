@@ -1,8 +1,11 @@
 ### STAGE 1: Build ###
 
-FROM bitnami/minideb:unstable as builder
+FROM debian:buster-slim as builder
 
-RUN install_packages gcc gcc-multilib dub ldc
+RUN apt-get update && \
+    apt-get install -y libc6-dev gcc curl && \
+    curl -L -o /dmd.deb http://downloads.dlang.org/releases/2.x/2.076.1/dmd_2.076.1-0_amd64.deb && \
+    dpkg -i /dmd.deb
 
 COPY . .
 
@@ -12,13 +15,9 @@ RUN dub build -b release
 
 FROM busybox:1.27.2-glibc
 
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libphobos2-ldc.so.74 \
-                    /usr/lib/x86_64-linux-gnu/libdruntime-ldc.so.74 \
-                    /lib/x86_64-linux-gnu/ld-2.24.so \
-                    /lib/x86_64-linux-gnu/libz.so.1 \
-                    /lib/x86_64-linux-gnu/librt.so.1 \
-                    /lib/x86_64-linux-gnu/libgcc_s.so.1 \
+COPY --from=builder /lib/x86_64-linux-gnu/librt.so.1 \
                     /lib/x86_64-linux-gnu/libdl.so.2 \
+                    /lib/x86_64-linux-gnu/libgcc_s.so.1 \
                     /usr/local/lib/
 
 COPY --from=builder /socks5d /socks5d
