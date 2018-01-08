@@ -4,7 +4,7 @@ FROM debian:buster-slim as builder
 
 RUN apt-get update && \
     apt-get install -y libc6-dev gcc curl && \
-    curl -L -o /dmd.deb http://downloads.dlang.org/releases/2.x/2.076.1/dmd_2.076.1-0_amd64.deb && \
+    curl -L -o /dmd.deb http://downloads.dlang.org/releases/2.x/2.078.0/dmd_2.078.0-0_amd64.deb && \
     dpkg -i /dmd.deb
 
 COPY . .
