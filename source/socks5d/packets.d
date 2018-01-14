@@ -3,11 +3,19 @@ module socks5d.packets;
 import std.socket;
 import std.bitmanip;
 import std.conv;
+import std.traits;
+import vibe.core.net;
+import vibe.core.log;
 
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
     AUTH = 0x02,
     NOTAVAILABLE = 0xFF
+}
+
+enum AuthStatus : ubyte {
+    YES = 0x00,
+    NO = 0x01,
 }
 
 enum RequestCmd : ubyte {
@@ -49,6 +57,9 @@ string printFields(T)(T args)
     }
     max += 1;
     foreach (index, value; values) {
+        if (T.tupleof[index].stringof == "connID") {
+            continue;
+        }
         result ~= format("%s=%s ", T.tupleof[index].stringof, value);
     }
 
@@ -56,6 +67,17 @@ string printFields(T)(T args)
 }
 
 class SocksException : Exception
+{
+    public:
+
+        this(string msg, string file = __FILE__,
+         size_t line = __LINE__, Throwable next = null) @safe pure nothrow
+        {
+            super(msg, file, line, next);
+        }
+}
+
+class AuthException : Exception
 {
     public:
 
@@ -79,9 +101,10 @@ class RequestException : SocksException
         }
 }
 
-abstract class Socks5Packet
+mixin template Socks5Packet()
 {
     ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
+    uint connID;    // connection ID
 
     ubyte getVersion()
     {
@@ -89,40 +112,65 @@ abstract class Socks5Packet
     }
 }
 
-abstract class IncomingPacket: Socks5Packet
+mixin template Socks5IncomingPacket()
 {
-    void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
+    mixin Socks5Packet;
+
+    @safe
+    void receiveVersion(TCPConnection conn, ubyte requiredVersion = 0x05)
     {
-        socket.receive(ver);
+        conn.read(ver);
+
+        logTrace("[%d] Received version: %d", connID, ver[0]);
+
+
+
         if (ver[0] != requiredVersion) {
-            throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
+            ubyte[20] buf;
+        conn.read(buf);
+            throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string ~
+            (cast(char[])buf).to!string
+            );
         }
     }
 
-    void receiveBuffer(Socket s, ref ubyte[1] len, ref ubyte[] buf)
+    @safe
+    void receiveBuffer(TCPConnection conn, ref ubyte[1] len, ref ubyte[] buf)
     {
-        s.receive(len);
+        conn.read(len);
+
+        logTrace("[%d] Received buffer length: %d", connID, len[0]);
+
         buf = new ubyte[len[0]];
-        s.receive(buf);
+        conn.read(buf);
     }
-
-    void receive(Socket s);
 }
 
-abstract class OutgoingPacket: Socks5Packet
+
+
+mixin template Socks5OutgoingPacket()
 {
-    abstract void send(Socket s);
+    mixin Socks5Packet;
 }
 
-class MethodIdentificationPacket : IncomingPacket
+enum bool isSocks5IncomingPacket(P) =
+    hasMember!(P, "receive");
+
+enum bool isSocks5OutgoingPacket(P) =
+    hasMember!(P, "send");
+
+@safe
+struct MethodIdentificationPacket
 {
+    mixin Socks5IncomingPacket;
+
     ubyte[1] nmethods;
     ubyte[]  methods;
 
-    override void receive(Socket socket)
+    void receive(TCPConnection conn)
     {
-        receiveVersion(socket);
-        receiveBuffer(socket, nmethods, methods);
+        receiveVersion(conn);
+        receiveBuffer(conn, nmethods, methods);
     }
 
     AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
@@ -143,6 +191,7 @@ class MethodIdentificationPacket : IncomingPacket
         return nmethods[0];
     }
 
+    /*
     unittest
     {
         auto packet = new MethodIdentificationPacket;
@@ -160,32 +209,48 @@ class MethodIdentificationPacket : IncomingPacket
         assert(packet.getNMethods() == 1);
         assert(packet.detectAuthMethod([AuthMethod.NOAUTH]) == AuthMethod.NOAUTH);
         assert(packet.detectAuthMethod([AuthMethod.AUTH]) == AuthMethod.NOTAVAILABLE);
-    }
+    } */
 }
 
-class MethodSelectionPacket : OutgoingPacket
+@safe
+struct MethodSelectionPacket
 {
-    ubyte method;
+    mixin Socks5OutgoingPacket;
 
-    override void send(Socket s)
+    ubyte[1] method;
+
+    void send(TCPConnection conn)
     {
-        s.send(ver);
-        s.send((&method)[0..1]);
+        conn.write(ver);
+        conn.write(method);
+    }
+
+    AuthMethod getMethod()
+    {
+        return cast(AuthMethod)method[0];
+    }
+
+    void setMethod(AuthMethod method)
+    {
+        this.method[0] = method;
     }
 }
 
-class AuthPacket : IncomingPacket
+@safe
+struct AuthPacket
 {
+    mixin Socks5IncomingPacket;
+
     ubyte[1]  ulen;
     ubyte[]   uname;
     ubyte[1]  plen;
     ubyte[]   passwd;
 
-    override void receive(Socket socket)
+    void receive(TCPConnection conn)
     {
-        receiveVersion(socket, 0x01);
-        receiveBuffer(socket, ulen, uname);
-        receiveBuffer(socket, plen, passwd);
+        receiveVersion(conn, 0x01);
+        receiveBuffer(conn, ulen, uname);
+        receiveBuffer(conn, plen, passwd);
     }
 
     string getAuthString()
@@ -195,6 +260,7 @@ class AuthPacket : IncomingPacket
         return format("%s:%s", cast(char[])uname, cast(char[])passwd ) ;
     }
 
+/*
     unittest
     {
         auto packet = new AuthPacket;
@@ -212,84 +278,131 @@ class AuthPacket : IncomingPacket
 
         assert(packet.getVersion() == 1);
         assert(packet.getAuthString() == "tuser:tpasswd");
-    }
+    } */
 }
 
-class AuthStatusPacket : OutgoingPacket
+@safe
+struct AuthStatusPacket
 {
-    ubyte status = 0x00;
+    mixin Socks5OutgoingPacket;
 
-    override void send(Socket s)
+    private ubyte[1] status = [0x00];
+
+    void send(TCPConnection conn)
     {
-        s.send(ver);
-        s.send((&status)[0..1]);
+        conn.write(ver);
+        conn.write(status);
+    }
+
+    AuthStatus getStatus()
+    {
+        return cast(AuthStatus)status[0];
+    }
+
+    void setStatus(AuthStatus status)
+    {
+        this.status[0] = status;
     }
 }
 
-class RequestPacket : IncomingPacket
+@safe
+struct RequestPacket
 {
+    mixin Socks5IncomingPacket;
+
     RequestCmd[1]  cmd;
     ubyte[1]       rsv;
     AddressType[1] atyp;
     ubyte[]        dstaddr;
     ubyte[2]       dstport;
 
-    private InternetAddress destinationAddress;
+    private string host;
 
     // fill structure with data from socket
-    override void receive(Socket socket)
+    void receive(TCPConnection conn)
     {
-        receiveVersion(socket);
-        readRequestCommand(socket);
-        socket.receive(rsv);
+        receiveVersion(conn);
+        readRequestCommand(conn);
+        conn.read(rsv);
+
+        logTrace("[%d] Received rsv: %d", connID, rsv[0]);
+
         if (rsv[0] != 0x00) {
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
         }
 
-        destinationAddress = readAddressAndPort(socket);
+        readAddressAndPort(conn);
     }
 
-    InternetAddress getDestinationAddress()
+    ushort getPort()
     {
-        return destinationAddress;
+        return dstport.bigEndianToNative!ushort;
     }
 
-    private void readRequestCommand(Socket socket)
+    string getHost()
     {
-        socket.receive(cmd);
+        return host;
+    }
+
+    private void readRequestCommand(TCPConnection conn)
+    {
+        conn.read(cast(ubyte[1])cmd);
+
+        logTrace("[%d] Received request command: %s", connID, cmd[0]);
+
         if (cmd[0] != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
                 "Only CONNECT method is supported, given " ~ cmd[0].to!string);
         }
     }
 
-    private InternetAddress readAddressAndPort(Socket socket)
+    @trusted
+    private void readAddressAndPort(TCPConnection conn)
     {
-        socket.receive(atyp);
+        conn.read(cast(ubyte[1])atyp);
 
         switch (atyp[0]) {
             case AddressType.IPV4:
-                dstaddr = new ubyte[4];
-                socket.receive(dstaddr);
-                socket.receive(dstport);
+                logTrace("[%d] Address type: IPV4", connID);
 
-                return new InternetAddress(dstaddr.read!uint, dstport.bigEndianToNative!ushort);
+                dstaddr = new ubyte[4];
+                conn.read(dstaddr);
+                conn.read(dstport);
+
+                host = InternetAddress.addrToString(dstaddr.read!uint);
+                break;
 
             case AddressType.DOMAIN:
-                ubyte[1] length;
-                receiveBuffer(socket, length, dstaddr);
-                socket.receive(dstport);
+                logTrace("[%d] Adress type: DOMAIN", connID);
 
-                return new InternetAddress(cast(char[])dstaddr, dstport.bigEndianToNative!ushort);
+                ubyte[1] length;
+                receiveBuffer(conn, length, dstaddr);
+                conn.read(dstport);
+                host = stringDstaddr();
+
+                logDebug("[%d] Request connect to %s", connID, host);
+                break;
 
             case AddressType.IPV6:
+                logTrace("[%d] Address type: IPV6", connID);
+
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "AddressType=ipv6 is not supported");
 
             default:
+                logTrace("[%d] Address type: UNKNOWN", connID);
+
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp[0]);
         }
     }
 
+    @trusted
+    private string stringDstaddr()
+    {
+        return cast(string)dstaddr;
+    }
+
+/*
+@todo
     /// test IPv4 address type
     unittest
     {
@@ -330,35 +443,57 @@ class RequestPacket : IncomingPacket
 
         assert(packet.getVersion() == 5);
         assert(packet.getDestinationAddress().toString() == "127.0.0.1:80");
-    }
+    } */
 }
 
-class ResponsePacket : OutgoingPacket
+@safe
+struct ResponsePacket
 {
+    mixin Socks5OutgoingPacket;
+
+    enum REP = 0;
+    enum RSV = 1;
+    enum ATYP = 2;
+    enum BNDADDR = 3;
+    enum BNDPORT = 6;
+
+    // rep + rsv + atyp +
+    private ubyte[1 + 1 + 1 + 4 + 2] buffer;
+
     ReplyCode   rep = ReplyCode.SUCCEEDED;
     ubyte[1]    rsv = [0x00];
     AddressType atyp;
     ubyte[4]    bndaddr;
-    ubyte[2]    bndport;
+    // @todo ubyte[2]    bndport;
 
-    override void send(Socket s)
+    @property
+    void replyCode(ReplyCode code)
     {
-        s.send(ver);
-        s.send((&rep)[0..1]);
-        s.send(rsv);
-        s.send((&atyp)[0..1]);
-        s.send(bndaddr);
-        s.send(bndport);
+        buffer[REP] = code;
     }
 
-    bool setBindAddress(InternetAddress address)
+    @property
+    void addressType(AddressType type)
     {
-        bndport = nativeToBigEndian(address.port);
-        bndaddr = nativeToBigEndian(address.addr);
+        buffer[ATYP] = type;
+    }
+
+    void send(TCPConnection conn)
+    {
+        conn.write(ver);
+        conn.write(buffer);
+    }
+
+    bool setBindAddress(NetworkAddress address)
+    {
+        //  bndport = nativeToBigEndian(address.port);
+        //  bndaddr = nativeToBigEndian(address.addr);
+
+        // logTrace("[%d] Local target address: %s", connID, address.toString());
 
         return true;
     }
-
+/*
     unittest
     {
         auto packet = new ResponsePacket;
@@ -379,5 +514,5 @@ class ResponsePacket : OutgoingPacket
         sp[1].receive(buf);
 
         assert(buf == output);
-    }
+    } */
 }

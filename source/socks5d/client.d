@@ -1,22 +1,29 @@
 module socks5d.client;
 
 import std.socket;
+import vibe.core.core;
+import vibe.core.log;
+import vibe.core.net;
 import socks5d.packets;
-import std.experimental.logger;
 
+
+@safe
 class Client
 {
+    enum BUFSIZE = 1024*8;
+
     protected:
-        uint         id;
-        Socket       socket;
-        TcpSocket	 targetSocket;
+        static uint     id;
+
+        TCPConnection conn;
+        TCPConnection targetConn;
         string       authString;
         AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
 
     public:
-        this(Socket clientSocket, uint id)
+        this(TCPConnection conn, uint id)
         {
-            socket = clientSocket;
+            this.conn = conn;
             this.id = id;
         }
 
@@ -24,71 +31,96 @@ class Client
         {
             if (authString.length > 1) {
                 this.authString = authString;
-                availableMethods = [ AuthMethod.AUTH ];
+                availableMethods = [ AuthMethod.NOAUTH ];
             }
         }
 
         final void run()
         {
-            warningf("[%d] New client accepted: %s", id, socket.remoteAddress().toString());
+            import vibe.core.stream : pipe;
+
+            logDiagnostic("[%d] New client accepted: %s", id, conn.remoteAddress().toString());
 
             try {
-                if (authenticate()) {
-                    infof("[%d] Client successfully authenticated.", id);
-                } else {
-                    warningf("[%d] Client failed to authenticate.", id);
-                    socket.close();
+                if (!authenticate()) {
+                    conn.close();
 
                     return;
                 }
 
-                if (handshake) {
-                    targetToClientSession(socket, targetSocket);
+                if (handshake()) {
+                    logDebug("[%d] Handshake OK", id);
+
+                    auto task1 = runTask(&clientToTargetSession);
+
+                    try {
+                        pipe(targetConn, conn);
+                    } catch (Exception e) {
+                        logDebug("[%d] Client closed connection", id);
+                    }
+
                 } else {
-                    socket.close();
+                    logDebug("[%d] Handshake error", id);
+                    conn.close();
                 }
 
             } catch (SocksException e) {
-                errorf("Error: %s", e.msg);
-                socket.close();
+                logError("[%d] Error: %s", id, e.msg);
+                conn.close();
             }
         }
 
     protected:
+        void send(P)(ref P packet)
+        if (isSocks5OutgoingPacket!P)
+        {
+            logDebugV("[%d] send: %s", id, packet.printFields);
+            packet.send(conn);
+        }
+
+        void receive(P)(ref P packet)
+        if (isSocks5IncomingPacket!P)
+        {
+            packet.receive(conn);
+            logDebugV("[%d] recv: %s", id, packet.printFields);
+        }
+
         bool authenticate()
         {
-            auto identificationPacket = new MethodIdentificationPacket;
-            identificationPacket.receive(socket);
-            tracef("[%d] -> %s", id, identificationPacket.printFields);
+            MethodIdentificationPacket identificationPacket = {
+                connID: id,
+            };
+            receive(identificationPacket);
 
-            auto packet2 = new MethodSelectionPacket;
+            MethodSelectionPacket packet2 = {
+                connID: id,
+                method: identificationPacket.detectAuthMethod(availableMethods)
+            };
 
-            packet2.method = identificationPacket.detectAuthMethod(availableMethods);
+            send(packet2);
 
-            tracef("[%d] <- %s", id, packet2.printFields);
-            packet2.send(socket);
-
-            if (packet2.method == AuthMethod.NOTAVAILABLE) {
+            if (packet2.getMethod() == AuthMethod.NOTAVAILABLE) {
+                logDiagnostic("[%d] No available method to authenticate.", id);
                 return false;
             }
 
-            if (packet2.method == AuthMethod.AUTH) {
-                auto authPacket = new AuthPacket;
-                auto authStatus = new AuthStatusPacket;
+            if (packet2.getMethod() == AuthMethod.AUTH) {
+                AuthPacket authPacket;
+                AuthStatusPacket authStatusPacket;
 
-                authPacket.receive(socket);
-                tracef("[%d] -> %s", id, authPacket.printFields);
-                tracef("[%d] Client auth with credentials: %s", id, authPacket.getAuthString());
+                receive(authPacket);
+                logDebugV("[%d] Client auth with credentials: %s", id, authPacket.getAuthString());
 
                 if (authPacket.getAuthString() == authString) {
-                    authStatus.status = 0x00;
-                    tracef("[%d] <- %s", id, authStatus.printFields);
-                    authStatus.send(socket);
+                    authStatusPacket.setStatus(AuthStatus.YES);
+                    send(authStatusPacket);
+                    logDiagnostic("[%d] Client successfully authenticated.", id);
 
                     return true;
                 } else {
-                    authStatus.status = 0x01;
-                    authStatus.send(socket);
+                    authStatusPacket.setStatus(AuthStatus.NO);
+                    send(authStatusPacket);
+                    logDiagnostic("[%d] Client failed to authenticate.", id);
 
                     return false;
                 }
@@ -99,112 +131,33 @@ class Client
 
         bool handshake()
         {
-            auto requestPacket = new RequestPacket;
-            auto packet4 = new ResponsePacket;
-            InternetAddress targetAddress;
+            RequestPacket requestPacket = { connID: id };
+            ResponsePacket responsePacket = { connID: id };
 
             try {
-                requestPacket.receive(socket);
+                receive(requestPacket);
             } catch (RequestException e) {
-                errorf("Error: %s", e.msg);
-                packet4.rep = e.replyCode;
-                tracef("[%d] <- %s", id, packet4.printFields);
-                packet4.send(socket);
+                logWarn("[%d] Error: %s", id, e.msg);
+                responsePacket.replyCode = e.replyCode;
+                send(responsePacket);
 
                 return false;
             }
 
-            tracef("[%d] -> %s", id, requestPacket.printFields);
+            logDebugV("[%d] Connecting to %s:%d", id, requestPacket.getHost(), requestPacket.getPort());
+            targetConn = connectTCP(requestPacket.getHost(), requestPacket.getPort());
 
-            targetSocket = connectToTarget(requestPacket.getDestinationAddress());
+            responsePacket.addressType = AddressType.IPV4;
+            responsePacket.setBindAddress(targetConn.localAddress);
 
-            packet4.atyp = AddressType.IPV4;
-            packet4.setBindAddress(cast(InternetAddress)targetSocket.localAddress);
-
-            tracef("[%d] Local target address: %s", id, targetSocket.localAddress.toString());
-            tracef("[%d] <- %s", id, packet4.printFields);
-            packet4.send(socket);
+            send(responsePacket);
 
             return true;
         }
 
-        TcpSocket connectToTarget(InternetAddress address)
-        out (targetSock) {
-            assert(targetSock.isAlive);
-        } body {
-            auto targetSock = new TcpSocket;
-            tracef("[%d] Connecting to target %s", id, address.toString());
-            targetSock.connect(address);
-
-            return targetSock;
-        }
-
-        void targetToClientSession(Socket clientSocket, Socket targetSocket)
+        protected void clientToTargetSession()
         {
-            auto sset = new SocketSet(2);
-            ubyte[1024*8] buffer;
-            ptrdiff_t received;
-
-            debug {
-                int bytesToClient;
-                static int bytesToClientLogThreshold = 1024*128;
-                int bytesToTarget;
-                static int bytesToTargetLogThreshold = 1024*8;
-            }
-
-            for (;; sset.reset()) {
-                sset.add(clientSocket);
-                sset.add(targetSocket);
-
-                if (Socket.select(sset, null, null) <= 0) {
-                    infof("[%d] End of data transfer", id);
-                    break;
-                }
-
-                if (sset.isSet(clientSocket)) {
-                    received = clientSocket.receive(buffer);
-                    if (received == Socket.ERROR) {
-                        warningf("[%d] Connection error on clientSocket.", id);
-                        break;
-                    } else if (received == 0) {
-                        infof("[%d] Client connection closed.", id);
-                        break;
-                    }
-
-                    targetSocket.send(buffer[0..received]);
-
-                    debug {
-                        bytesToTarget += received;
-                        if (bytesToTarget >= bytesToTargetLogThreshold) {
-                            tracef("[%d] <- %d bytes sent to target", id, bytesToTarget);
-                            bytesToTarget -= bytesToTargetLogThreshold;
-                        }
-                    }
-                }
-
-                if (sset.isSet(targetSocket)) {
-                    received = targetSocket.receive(buffer);
-                    if (received == Socket.ERROR) {
-                        warningf("[%d] Connection error on targetSocket.", id);
-                        break;
-                    } else if (received == 0) {
-                        infof("[%d] Target connection closed.", id);
-                        break;
-                    }
-
-                    clientSocket.send(buffer[0..received]);
-
-                    debug {
-                        bytesToClient += received;
-                        if (bytesToClient >= bytesToClientLogThreshold) {
-                            tracef("[%d] <- %d bytes sent to client", id, bytesToClient);
-                            bytesToClient -= bytesToClientLogThreshold;
-                        }
-                    }
-                }
-            }
-
-            clientSocket.close();
-            targetSocket.close();
+            import vibe.core.stream : pipe;
+            pipe(conn, targetConn);
         }
 }

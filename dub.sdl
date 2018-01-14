@@ -3,3 +3,5 @@ description "SOCKS5 proxy server implementation in D"
 authors     "Pavel Chebotarev"
 
 license "MIT"
+
+dependency "vibe-core" version="~>1.3.0"
