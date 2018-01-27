@@ -1,6 +1,5 @@
 module socks5d.client;
 
-import std.socket;
 import vibe.core.core;
 import vibe.core.log;
 import vibe.core.net;
