@@ -3,7 +3,7 @@ import socks5d.server, socks5d.config;
 import std.experimental.logger;
 import core.thread : Thread;
 
-immutable string versionString = "0.0.2";
+immutable string versionString = "0.0.3";
 immutable string defaultAddress = "127.0.0.1";
 immutable ushort defaultPort = 1080;
 
