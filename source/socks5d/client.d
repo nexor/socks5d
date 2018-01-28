@@ -11,7 +11,10 @@ class Client
         Socket       socket;
         TcpSocket	 targetSocket;
         string       authString;
-        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
+        AuthMethod[] availableMethods = [
+            AuthMethod.NOAUTH,
+            //AuthMethod.AUTH,
+        ];
 
     public:
         this(Socket clientSocket, uint id)

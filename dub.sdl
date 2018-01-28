@@ -3,3 +3,6 @@ description "SOCKS5 proxy server implementation in D"
 authors     "Pavel Chebotarev"
 
 license "MIT"
+
+dependency "sdlang-d" version="~master"
+

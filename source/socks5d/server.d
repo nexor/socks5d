@@ -25,9 +25,18 @@ class Server
 
         void setAuthString(string authString)
         {
+            import std.algorithm, std.array;
+
             this.authString = authString;
             if (authString.length > 1) {
-                warningf("Using authentication string: %s", authString);
+                string[] credentials = authString.split(":");
+
+                warningf("Using authentication: %s:%s",
+                    credentials[0],
+                    credentials[1].map!(c => "*").join()
+                );
+            } else {
+                warningf("Authentication credentials were not set");
             }
         }
 
