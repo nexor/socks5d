@@ -17,7 +17,10 @@ class Client
         TCPConnection conn;
         TCPConnection targetConn;
         string       authString;
-        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
+        AuthMethod[] availableMethods = [
+            AuthMethod.NOAUTH,
+            //AuthMethod.AUTH,
+        ];
 
     public:
         this(TCPConnection conn, uint id)

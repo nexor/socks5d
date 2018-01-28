@@ -21,9 +21,18 @@ class Server
 
         void setAuthString(string authString)
         {
+            import std.algorithm, std.array;
+
             this.authString = authString;
             if (authString.length > 1) {
-                logWarn("Using authentication string: %s", authString);
+                string[] credentials = authString.split(":");
+
+                logInfo("Using authentication: %s:%s",
+                    credentials[0],
+                    credentials[1].map!(c => "*").join()
+                );
+            } else {
+                logWarn("Authentication credentials were not set");
             }
         }
 
@@ -47,6 +56,5 @@ class Server
                 scope (failure) assert(false);
                 logError("Connection error: %s", e.msg);
             }
-
         }
 }
