@@ -4,7 +4,7 @@ import vibe.core.core;
 import vibe.core.log;
 import vibe.core.net;
 import socks5d.packets;
-
+import socks5d.server;
 
 @safe
 class Client
@@ -16,24 +16,21 @@ class Client
 
         TCPConnection conn;
         TCPConnection targetConn;
-        string       authString;
-        AuthMethod[] availableMethods = [
+        Server        server;
+        AuthMethod[]  availableMethods = [
             AuthMethod.NOAUTH,
             //AuthMethod.AUTH,
         ];
 
     public:
-        this(TCPConnection conn, uint id)
+        this(TCPConnection conn, uint id, Server server)
         {
             this.conn = conn;
             this.id = id;
-        }
+            this.server = server;
 
-        void setAuthString(string authString)
-        {
-            if (authString.length > 1) {
-                this.authString = authString;
-                availableMethods = [ AuthMethod.NOAUTH ];
+            if (server.hasAuthItems()) {
+                availableMethods = [ AuthMethod.AUTH ];
             }
         }
 
@@ -111,9 +108,9 @@ class Client
                 AuthStatusPacket authStatusPacket;
 
                 receive(authPacket);
-                logDebugV("[%d] Client auth with credentials: %s", id, authPacket.getAuthString());
+                logDebugV("[%d] Client auth with credentials: %s:***", id, authPacket.login);
 
-                if (authPacket.getAuthString() == authString) {
+                if (server.authenticate(authPacket.login, authPacket.password)) {
                     authStatusPacket.setStatus(AuthStatus.YES);
                     send(authStatusPacket);
                     logDiagnostic("[%d] Client successfully authenticated.", id);

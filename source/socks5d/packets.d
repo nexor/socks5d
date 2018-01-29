@@ -123,8 +123,6 @@ mixin template Socks5IncomingPacket()
 
         logTrace("[%d] Received version: %d", connID, ver[0]);
 
-
-
         if (ver[0] != requiredVersion) {
             ubyte[20] buf;
         conn.read(buf);
@@ -253,11 +251,16 @@ struct AuthPacket
         receiveBuffer(conn, plen, passwd);
     }
 
-    string getAuthString()
+    @property @trusted
+    string login()
     {
-        import std.format : format;
+        return cast(string)uname;
+    }
 
-        return format("%s:%s", cast(char[])uname, cast(char[])passwd ) ;
+    @property @trusted
+    string password()
+    {
+        return cast(string)passwd;
     }
 
 /*
@@ -277,7 +280,8 @@ struct AuthPacket
         packet.receive(sp[1]);
 
         assert(packet.getVersion() == 1);
-        assert(packet.getAuthString() == "tuser:tpasswd");
+        assert(packet.login == "tuser");
+        assert(packet.password == "tpasswd");
     } */
 }
 
