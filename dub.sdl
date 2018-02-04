@@ -7,3 +7,5 @@ license "MIT"
 dependency "vibe-core" version="~>1.3.0"
 dependency "sdlang-d" version="~master"
 
+
+subConfiguration "vibe-core" "select"

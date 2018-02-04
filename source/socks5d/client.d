@@ -16,6 +16,7 @@ class Client
 
         TCPConnection conn;
         TCPConnection targetConn;
+
         Server        server;
         AuthMethod[]  availableMethods = [
             AuthMethod.NOAUTH,
@@ -34,10 +35,9 @@ class Client
             }
         }
 
+
         final void run()
         {
-            import vibe.core.stream : pipe;
-
             logDiagnostic("[%d] New client accepted: %s", id, conn.remoteAddress().toString());
 
             try {
@@ -49,14 +49,7 @@ class Client
 
                 if (handshake()) {
                     logDebug("[%d] Handshake OK", id);
-
-                    auto task1 = runTask(&clientToTargetSession);
-
-                    try {
-                        pipe(targetConn, conn);
-                    } catch (Exception e) {
-                        logDebug("[%d] Client closed connection", id);
-                    }
+                    doSession();
 
                 } else {
                     logDebug("[%d] Handshake error", id);
@@ -154,9 +147,32 @@ class Client
             return true;
         }
 
+        @trusted
+        protected void doSession()
+        {
+            auto task1 = runTask(&clientToTargetSession);
+            size_t chunk;
+
+            try {
+                while (targetConn.waitForData()) {
+                    chunk = targetConn.peek().length;
+                    logTrace("Read targetConn chunk %d", chunk);
+                    conn.write(targetConn.peek());
+                    targetConn.skip(chunk);
+                }
+            } catch (Exception e) {
+                logError("[%d] Client closed connection", id);
+            }
+        }
+
         protected void clientToTargetSession()
         {
-            import vibe.core.stream : pipe;
-            pipe(conn, targetConn);
+            size_t chunk;
+            while (conn.waitForData()) {
+                chunk = conn.peek().length;
+                logTrace("Read conn chunk %d", chunk);
+                targetConn.write(conn.peek());
+                conn.skip(chunk);
+            }
         }
 }
