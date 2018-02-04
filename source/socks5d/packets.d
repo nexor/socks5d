@@ -4,7 +4,7 @@ import std.socket;
 import std.bitmanip;
 import std.conv;
 import std.traits;
-import vibe.core.net;
+import vibe.core.stream;
 import vibe.core.log;
 
 enum AuthMethod : ubyte {
@@ -117,7 +117,8 @@ mixin template Socks5IncomingPacket()
     mixin Socks5Packet;
 
     @safe
-    void receiveVersion(TCPConnection conn, ubyte requiredVersion = 0x05)
+    void receiveVersion(InputStream)(InputStream conn, ubyte requiredVersion = 0x05)
+        if (isInputStream!InputStream)
     {
         conn.read(ver);
 
@@ -129,7 +130,8 @@ mixin template Socks5IncomingPacket()
     }
 
     @safe
-    void receiveBuffer(TCPConnection conn, ref ubyte[1] len, ref ubyte[] buf)
+    void receiveBuffer(InputStream)(InputStream conn, ref ubyte[1] len, ref ubyte[] buf)
+        if (isInputStream!InputStream)
     {
         conn.read(len);
 
@@ -161,7 +163,8 @@ struct MethodIdentificationPacket
     ubyte[1] nmethods;
     ubyte[]  methods;
 
-    void receive(TCPConnection conn)
+    void receive(InputStream)(InputStream conn)
+        if (isInputStream!InputStream)
     {
         receiveVersion(conn);
         receiveBuffer(conn, nmethods, methods);
@@ -213,7 +216,8 @@ struct MethodSelectionPacket
 
     ubyte[1] method;
 
-    void send(TCPConnection conn)
+    void send(OutputStream)(OutputStream conn)
+        if (isOutputStream!OutputStream)
     {
         conn.write(ver);
         conn.write(method);
@@ -240,7 +244,8 @@ struct AuthPacket
     ubyte[1]  plen;
     ubyte[]   passwd;
 
-    void receive(TCPConnection conn)
+    void receive(InputStream)(InputStream conn)
+        if (isInputStream!InputStream)
     {
         receiveVersion(conn, 0x01);
         receiveBuffer(conn, ulen, uname);
@@ -288,7 +293,8 @@ struct AuthStatusPacket
 
     private ubyte[1] status = [0x00];
 
-    void send(TCPConnection conn)
+    void send(OutputStream)(OutputStream conn)
+        if (isOutputStream!OutputStream)
     {
         conn.write(ver);
         conn.write(status);
@@ -319,7 +325,8 @@ struct RequestPacket
     private string host;
 
     // fill structure with data from socket
-    void receive(TCPConnection conn)
+    void receive(InputStream)(InputStream conn)
+        if (isInputStream!InputStream)
     {
         receiveVersion(conn);
         readRequestCommand(conn);
@@ -344,7 +351,8 @@ struct RequestPacket
         return host;
     }
 
-    private void readRequestCommand(TCPConnection conn)
+    private void readRequestCommand(InputStream)(InputStream conn)
+        if (isInputStream!InputStream)
     {
         conn.read(cast(ubyte[1])cmd);
 
@@ -357,7 +365,8 @@ struct RequestPacket
     }
 
     @trusted
-    private void readAddressAndPort(TCPConnection conn)
+    private void readAddressAndPort(InputStream)(InputStream conn)
+        if (isInputStream!InputStream)
     {
         conn.read(cast(ubyte[1])atyp);
 
@@ -481,18 +490,23 @@ struct ResponsePacket
         fields.atyp = type;
     }
 
-    void send(TCPConnection conn)
+    void send(OutputStream)(OutputStream conn)
+        if (isOutputStream!OutputStream)
     {
         conn.write(ver);
         conn.write(buffer);
     }
 
-    bool setBindAddress(NetworkAddress address)
+    bool setBindAddress(uint ip4, ushort port)
     {
-        fields.bndport = address.port;
-        fields.bndaddr = address.sockAddrInet4.sin_addr.s_addr;
+        fields.bndaddr = ip4;
+        fields.bndport = port;
 
-        logTrace("[%d] Local target address: %s", connID, address.toString());
+        debug {
+            import std.socket;
+            auto address = new InternetAddress(ip4, port);
+            logTrace("[%d] Local target address: %s", connID, address.toAddrString());
+        }
 
         return true;
     }

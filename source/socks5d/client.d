@@ -146,7 +146,10 @@ class Client
             targetConn = connectTCP(requestPacket.getHost(), requestPacket.getPort());
 
             responsePacket.addressType = AddressType.IPV4;
-            responsePacket.setBindAddress(targetConn.localAddress);
+            responsePacket.setBindAddress(
+                targetConn.localAddress.sockAddrInet4.sin_addr.s_addr,
+                targetConn.localAddress.port
+            );
 
             send(responsePacket);
 
