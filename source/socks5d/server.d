@@ -21,7 +21,7 @@ class Server
     private:
         string address;
         ushort port;
-        uint clientCounter = 0;
+        shared static uint clientCounter = 0;
 
         ListenItem[] listenItems;
         AuthItem[]   authItems;
@@ -93,8 +93,10 @@ class Server
         @safe nothrow
         void handleConnection(TCPConnection conn)
         {
+            import core.atomic : atomicOp;
+
             try {
-                clientCounter += 1;
+                atomicOp!"+="(clientCounter, 1);
                 auto client = new Client(conn, clientCounter, this);
 
                 client.run();

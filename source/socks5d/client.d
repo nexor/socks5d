@@ -12,7 +12,7 @@ class Client
     enum BUFSIZE = 1024*8;
 
     protected:
-        static uint     id;
+        uint     id;
 
         TCPConnection conn;
         TCPConnection targetConn;
@@ -49,7 +49,11 @@ class Client
 
                 if (handshake()) {
                     logDebug("[%d] Handshake OK", id);
-                    doSession();
+
+                    auto task1 = runTask((){
+                        pipe(conn, targetConn);
+                    });
+                    pipe(targetConn, conn);
 
                 } else {
                     logDebug("[%d] Handshake error", id);
@@ -60,6 +64,8 @@ class Client
                 logError("[%d] Error: %s", id, e.msg);
                 conn.close();
             }
+
+            logDebug("[%d] End of session", id);
         }
 
     protected:
@@ -147,32 +153,19 @@ class Client
             return true;
         }
 
-        @trusted
-        protected void doSession()
+        protected void pipe(ref TCPConnection src, ref TCPConnection dst)
         {
-            auto task1 = runTask(&clientToTargetSession);
             size_t chunk;
 
             try {
-                while (targetConn.waitForData()) {
-                    chunk = targetConn.peek().length;
-                    logTrace("Read targetConn chunk %d", chunk);
-                    conn.write(targetConn.peek());
-                    targetConn.skip(chunk);
+                while (src.waitForData()) {
+                    chunk = src.peek().length;
+                    logTrace("Read src chunk %d", chunk);
+                    dst.write(src.peek());
+                    src.skip(chunk);
                 }
             } catch (Exception e) {
                 logError("[%d] Client closed connection", id);
-            }
-        }
-
-        protected void clientToTargetSession()
-        {
-            size_t chunk;
-            while (conn.waitForData()) {
-                chunk = conn.peek().length;
-                logTrace("Read conn chunk %d", chunk);
-                targetConn.write(conn.peek());
-                conn.skip(chunk);
             }
         }
 }
