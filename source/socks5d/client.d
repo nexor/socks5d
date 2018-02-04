@@ -163,7 +163,7 @@ class Client
             try {
                 while (src.waitForData()) {
                     chunk = src.peek().length;
-                    logTrace("Read src chunk %d", chunk);
+                    debug logTrace("Read src chunk %d", chunk);
                     dst.write(src.peek());
                     src.skip(chunk);
                 }

@@ -122,7 +122,7 @@ mixin template Socks5IncomingPacket()
     {
         conn.read(ver);
 
-        logTrace("[%d] Received version: %d", connID, ver[0]);
+        debug logTrace("[%d] Received version: %d", connID, ver[0]);
 
         if (ver[0] != requiredVersion) {
             throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
@@ -135,7 +135,7 @@ mixin template Socks5IncomingPacket()
     {
         conn.read(len);
 
-        logTrace("[%d] Received buffer length: %d", connID, len[0]);
+        debug logTrace("[%d] Received buffer length: %d", connID, len[0]);
 
         buf = new ubyte[len[0]];
         conn.read(buf);
@@ -332,7 +332,7 @@ struct RequestPacket
         readRequestCommand(conn);
         conn.read(rsv);
 
-        logTrace("[%d] Received rsv: %d", connID, rsv[0]);
+        debug logTrace("[%d] Received rsv: %d", connID, rsv[0]);
 
         if (rsv[0] != 0x00) {
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
@@ -356,7 +356,7 @@ struct RequestPacket
     {
         conn.read(cast(ubyte[1])cmd);
 
-        logTrace("[%d] Received request command: %s", connID, cmd[0]);
+        debug logTrace("[%d] Received request command: %s", connID, cmd[0]);
 
         if (cmd[0] != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
@@ -372,7 +372,7 @@ struct RequestPacket
 
         switch (atyp[0]) {
             case AddressType.IPV4:
-                logTrace("[%d] Address type: IPV4", connID);
+                debug logTrace("[%d] Address type: IPV4", connID);
 
                 dstaddr = new ubyte[4];
                 conn.read(dstaddr);
@@ -382,7 +382,7 @@ struct RequestPacket
                 break;
 
             case AddressType.DOMAIN:
-                logTrace("[%d] Adress type: DOMAIN", connID);
+                debug logTrace("[%d] Adress type: DOMAIN", connID);
 
                 ubyte[1] length;
                 receiveBuffer(conn, length, dstaddr);
@@ -393,12 +393,12 @@ struct RequestPacket
                 break;
 
             case AddressType.IPV6:
-                logTrace("[%d] Address type: IPV6", connID);
+                debug logTrace("[%d] Address type: IPV6", connID);
 
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "AddressType=ipv6 is not supported");
 
             default:
-                logTrace("[%d] Address type: UNKNOWN", connID);
+                debug logTrace("[%d] Address type: UNKNOWN", connID);
 
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp[0]);
         }
