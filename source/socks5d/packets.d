@@ -450,36 +450,39 @@ struct RequestPacket
     } */
 }
 
+
 @safe
 struct ResponsePacket
 {
     mixin Socks5OutgoingPacket;
 
-    enum REP = 0;
-    enum RSV = 1;
-    enum ATYP = 2;
-    enum BNDADDR = 3;
-    enum BNDPORT = 6;
+    private struct ResponsePacketFields
+    {
+        align(1):
 
-    // rep + rsv + atyp +
-    private ubyte[1 + 1 + 1 + 4 + 2] buffer;
+        ReplyCode   rep = ReplyCode.SUCCEEDED;
+        ubyte       rsv = 0x00;
+        AddressType atyp;
+        uint        bndaddr;
+        ushort      bndport;
+    }
 
-    ReplyCode   rep = ReplyCode.SUCCEEDED;
-    ubyte[1]    rsv = [0x00];
-    AddressType atyp;
-    ubyte[4]    bndaddr;
-    // @todo ubyte[2]    bndport;
+    private union
+    {
+        ResponsePacketFields fields;
+        ubyte[fields.sizeof] buffer;
+    }
 
     @property
     void replyCode(ReplyCode code)
     {
-        buffer[REP] = code;
+        fields.rep = code;
     }
 
     @property
     void addressType(AddressType type)
     {
-        buffer[ATYP] = type;
+        fields.atyp = type;
     }
 
     void send(TCPConnection conn)
@@ -490,10 +493,10 @@ struct ResponsePacket
 
     bool setBindAddress(NetworkAddress address)
     {
-        //  bndport = nativeToBigEndian(address.port);
-        //  bndaddr = nativeToBigEndian(address.addr);
+        fields.bndport = address.port;
+        fields.bndaddr = address.sockAddrInet4.sin_addr.s_addr;
 
-        // logTrace("[%d] Local target address: %s", connID, address.toString());
+        logTrace("[%d] Local target address: %s", connID, address.toString());
 
         return true;
     }
