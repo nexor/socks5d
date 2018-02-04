@@ -124,11 +124,7 @@ mixin template Socks5IncomingPacket()
         logTrace("[%d] Received version: %d", connID, ver[0]);
 
         if (ver[0] != requiredVersion) {
-            ubyte[20] buf;
-        conn.read(buf);
-            throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string ~
-            (cast(char[])buf).to!string
-            );
+            throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
         }
     }
 
