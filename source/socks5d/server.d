@@ -16,6 +16,7 @@ struct AuthItem
     string password;
 }
 
+@safe nothrow
 class Server
 {
     private:
@@ -56,6 +57,7 @@ class Server
             listenItems ~= item;
         }
 
+
         void addAuthItem(AuthItem item)
         {
             authItems ~= item;
@@ -71,7 +73,7 @@ class Server
             authItems ~= item;
         }
 
-        @safe
+        nothrow
         bool authenticate(string login, string password)
         {
             foreach (item; authItems) {
@@ -83,14 +85,13 @@ class Server
             return false;
         }
 
-        @safe
         bool hasAuthItems()
         {
             return authItems.length > 0;
         }
 
     protected:
-        @safe nothrow
+        nothrow
         void handleConnection(TCPConnection conn)
         {
             import core.atomic : atomicOp;

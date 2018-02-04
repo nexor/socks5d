@@ -1,6 +1,5 @@
 module socks5d.packets;
 
-import std.socket;
 import std.bitmanip;
 import std.conv;
 import std.traits;
@@ -368,6 +367,8 @@ struct RequestPacket
     private void readAddressAndPort(InputStream)(InputStream conn)
         if (isInputStream!InputStream)
     {
+        import std.socket;
+
         conn.read(cast(ubyte[1])atyp);
 
         switch (atyp[0]) {

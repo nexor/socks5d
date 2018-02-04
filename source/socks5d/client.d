@@ -18,10 +18,7 @@ class Client
         TCPConnection targetConn;
 
         Server        server;
-        AuthMethod[]  availableMethods = [
-            AuthMethod.NOAUTH,
-            //AuthMethod.AUTH,
-        ];
+        AuthMethod[]  availableMethods = [ AuthMethod.NOAUTH ];
 
     public:
         this(TCPConnection conn, uint id, Server server)
