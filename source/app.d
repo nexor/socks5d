@@ -4,7 +4,7 @@ import vibe.core.log;
 import vibe.core.args;
 import vibe.core.file;
 
-immutable string versionString = "0.0.4";
+immutable string versionString = "0.0.4-dev";
 
 ushort port = 1080;
 string address = "127.0.0.1";

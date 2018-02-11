@@ -30,8 +30,8 @@ class Server
     public:
         this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
         {
-            this.listenItems ~= listenItems;
-            this.authItems ~= authItems;
+            this.listenItems = listenItems;
+            this.authItems = authItems;
         }
 
         final void run()
@@ -56,7 +56,6 @@ class Server
 
             listenItems ~= item;
         }
-
 
         void addAuthItem(AuthItem item)
         {

@@ -32,7 +32,6 @@ class Client
             }
         }
 
-
         final void run()
         {
             logDiagnostic("[%d] New client accepted: %s", id, conn.remoteAddress().toString());
