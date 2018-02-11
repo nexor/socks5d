@@ -2,6 +2,7 @@ module socks5d.client;
 
 import std.socket;
 import socks5d.packets;
+import socks5d.server;
 import std.experimental.logger;
 
 class Client
@@ -10,23 +11,18 @@ class Client
         uint         id;
         Socket       socket;
         TcpSocket	 targetSocket;
-        string       authString;
-        AuthMethod[] availableMethods = [
-            AuthMethod.NOAUTH,
-            //AuthMethod.AUTH,
-        ];
+
+        Server       server;
+        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
 
     public:
-        this(Socket clientSocket, uint id)
+        this(Socket clientSocket, uint id, Server server)
         {
             socket = clientSocket;
             this.id = id;
-        }
+            this.server = server;
 
-        void setAuthString(string authString)
-        {
-            if (authString.length > 1) {
-                this.authString = authString;
+            if (server.hasAuthItems()) {
                 availableMethods = [ AuthMethod.AUTH ];
             }
         }
@@ -81,9 +77,9 @@ class Client
 
                 authPacket.receive(socket);
                 tracef("[%d] -> %s", id, authPacket.printFields);
-                tracef("[%d] Client auth with credentials: %s", id, authPacket.getAuthString());
+                tracef("[%d] Client auth with credentials: %s:%s", id, authPacket.login, authPacket.password);
 
-                if (authPacket.getAuthString() == authString) {
+                if (server.authenticate(authPacket.login, authPacket.password)) {
                     authStatus.status = 0x00;
                     tracef("[%d] <- %s", id, authStatus.printFields);
                     authStatus.send(socket);
