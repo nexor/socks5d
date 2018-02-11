@@ -188,11 +188,16 @@ class AuthPacket : IncomingPacket
         receiveBuffer(socket, plen, passwd);
     }
 
-    string getAuthString()
+    @property
+    string login()
     {
-        import std.format : format;
+        return (cast(const char[])uname).to!string;
+    }
 
-        return format("%s:%s", cast(char[])uname, cast(char[])passwd ) ;
+    @property
+    string password()
+    {
+        return (cast(const char[])passwd).to!string;
     }
 
     unittest
@@ -211,7 +216,7 @@ class AuthPacket : IncomingPacket
         packet.receive(sp[1]);
 
         assert(packet.getVersion() == 1);
-        assert(packet.getAuthString() == "tuser:tpasswd");
+        assert(packet.login ~ ":" ~ packet.password == "tuser:tpasswd");
     }
 }
 

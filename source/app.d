@@ -1,9 +1,9 @@
-import std.stdio, std.getopt;
+import std.stdio, std.getopt, std.file;
 import socks5d.server, socks5d.config;
 import std.experimental.logger;
 import core.thread : Thread;
 
-immutable string versionString = "0.0.3";
+immutable string versionString = "0.0.4-dev";
 immutable string defaultAddress = "127.0.0.1";
 immutable ushort defaultPort = 1080;
 
@@ -16,6 +16,8 @@ bool   ver;
 
 int main(string[] args)
 {
+    logf(LogLevel.critical, "Starting socks5d server v. %s", versionString);
+
     if (processHelpInformation(args)) {
         return 0;
     }
@@ -38,28 +40,24 @@ int main(string[] args)
             warningf("Unknown verbosity level: %d", verbosity);
     }
 
-    auto configReader = new ConfigReader;
-    configReader
-        .setAddress(address)
-        .setPort(port)
-        .setAuthString(authString)
-        .setConfigFile(configFile);
+    Server[uint] servers;
+    if (configFile.exists()) {
+        servers = configFile.loadConfig.getServers();
+    } else {
+        infof("config file not found, using default settings");
 
-    auto server = configReader.buildServer();
-    startServer(server);
+        auto server = new Server;
+        server.addListenItem(address, port);
+        servers[0] = server;
+    }
+
+    foreach (serverId, server; servers) {
+        tracef("Running server %d", serverId);
+        server.run();
+    }
 
     return 0;
 }
-
-void startServer(Server server)
-{
-    logf(LogLevel.critical, "Starting socks5d server v. %s", versionString);
-
-    new Thread({
-        server.run();
-    }).start();
-}
-
 
 bool processHelpInformation(string[] args)
 {

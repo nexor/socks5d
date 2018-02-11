@@ -3,76 +3,127 @@ module socks5d.server;
 import socks5d.client;
 import std.socket;
 import std.experimental.logger;
+import core.thread : Thread;
+
+struct ListenItem
+{
+    string host;
+    ushort port;
+    uint   backlog = 10;
+}
+
+struct AuthItem
+{
+    string login;
+    string password;
+}
 
 class Server
 {
     private:
         string address;
         ushort port;
-        string authString;
-        int backlog;
-        Socket socket;
+
         Client[] clients;
         uint clientCounter = 0;
 
+        ListenItem[] listenItems;
+        AuthItem[]   authItems;
+
     public:
-        this(string address, ushort port = 1080, int backlog = 10)
+        this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
         {
-            this.address = address;
-            this.port = port;
-            this.backlog = backlog;
-        }
-
-        void setAuthString(string authString)
-        {
-            import std.algorithm, std.array;
-
-            this.authString = authString;
-            if (authString.length > 1) {
-                string[] credentials = authString.split(":");
-
-                warningf("Using authentication: %s:%s",
-                    credentials[0],
-                    credentials[1].map!(c => "*").join()
-                );
-            } else {
-                warningf("Authentication credentials were not set");
-            }
+            this.listenItems = listenItems;
+            this.authItems = authItems;
         }
 
         final void run()
         {
-            bindSocket();
-
-            while (true) {
-                acceptClient();
+            foreach (item; listenItems) {
+                new Thread({
+                    listen(item);
+                }).start();
             }
         }
 
-    protected:
-        void bindSocket()
+        void addListenItem(ListenItem item)
         {
+            listenItems ~= item;
+        }
 
-            socket = new TcpSocket;
+        void addListenItem(string host, ushort port)
+        {
+            ListenItem item = {
+                host: host,
+                port: port,
+            };
+
+            listenItems ~= item;
+        }
+
+        void addAuthItem(AuthItem item)
+        {
+            authItems ~= item;
+        }
+
+        void addAuthItem(string login, string password)
+        {
+            AuthItem item = {
+                login: login,
+                password: password,
+            };
+
+            authItems ~= item;
+        }
+
+        nothrow
+        bool authenticate(string login, string password)
+        {
+            foreach(item; authItems) {
+                if (item.login == login && item.password == password) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool hasAuthItems()
+        {
+            return authItems.length > 0;
+        }
+
+    protected:
+        void listen(ListenItem listenItem)
+        {
+            auto socket = bindSocket(listenItem.host, listenItem.port, listenItem.backlog);
+
+            while(true) {
+                acceptClient(socket);
+            }
+        }
+
+        TcpSocket bindSocket(string address, ushort port, uint backlog)
+        {
+            auto socket = new TcpSocket;
             assert(socket.isAlive);
             socket.bind(new InternetAddress(address, port));
             socket.listen(backlog);
 
             criticalf("Listening on %s", socket.localAddress().toString());
+
+            return socket;
         }
 
-        void acceptClient()
+        void acceptClient(Socket socket)
         {
-            import core.thread : Thread;
-
             auto clientSocket = socket.accept();
             assert(clientSocket.isAlive);
             assert(socket.isAlive);
 
             clientCounter++;
             new Thread({
-                auto client = new Client(clientSocket, clientCounter);
-                client.setAuthString(authString);
+                auto client = new Client(clientSocket, clientCounter, this);
                 clients ~= client;
                 client.run();
             }).start();

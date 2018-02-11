@@ -1,70 +1,270 @@
 module socks5d.config;
 
-import sdlang;
+import sdlang.parser;
 import socks5d.server;
-import std.stdio;
+import std.conv, std.file, std.algorithm.iteration;
+import std.experimental.logger;
 
-class ConfigReader
+alias logTrace = tracef;
+alias logDiagnostic = tracef;
+
+Configuration loadConfig(string filename)
 {
-    string address;
-    ushort port;
-    string authString;
+    auto source = cast(string)read(filename);
+    auto conf = new Configuration;
+    auto rootNode = new SDLRootTag(conf);
 
-    string configFile;
+    logDiagnostic("Parsing config file %s", filename);
+
+    source.pullParseSource(filename).each!(event => rootNode.parse(event));
+
+    return conf;
+}
+
+class Configuration
+{
+    protected:
+        Server[uint] servers;
 
     public:
-        ConfigReader setAddress(string address)
+        Server[uint] getServers()
         {
-            this.address = address;
-
-            return this;
+            return servers;
         }
 
-        ConfigReader setPort(ushort port)
+        bool addServer(uint id, Server server)
         {
-            this.port = port;
+            servers[id] = server;
 
-            return this;
+            return true;
+        }
+}
+
+private:
+
+abstract class SDLTag
+{
+    protected:
+        bool    isFinished = false;
+        SDLTag currentNode;
+        Configuration conf;
+
+    public:
+        this(Configuration conf)
+        {
+            this.conf = conf;
         }
 
-        ConfigReader setConfigFile(string configFile)
+        bool parse(ParserEvent event)
         {
-            this.configFile = configFile;
+            if (currentNode !is null) {
+                currentNode.parse(event);
+                if (currentNode.finished) {
+                    onChildTagEnd(currentNode);
+                    currentNode = null;
+                }
+            } else {
+                final switch(event.kind) {
+                    case ParserEvent.Kind.tagStart:
+                        auto e = cast(TagStartEvent) event;
+                        logTrace("%s TagStartEvent: %s:%s @ %s", typeid(this), e.namespace, e.name, e.location);
+                        onTagStart(e);
+                        break;
 
-            return this;
-        }
+                    case ParserEvent.Kind.tagEnd:
+                        auto e = cast(TagEndEvent) event;
+                        logTrace("%s TagEndEvent", typeid(this));
+                        onTagEnd(e);
+                        assert(isFinished == true);
+                        break;
 
-        ConfigReader setAuthString(string authString)
-        {
-            this.authString = authString;
+                    case ParserEvent.Kind.value:
+                        auto e = cast(ValueEvent) event;
+                        logTrace("%s ValueEvent: %s", typeid(this), e.value);
+                        onValue(e);
+                        break;
 
-            return this;
-        }
-
-        Server buildServer()
-        {
-            
-            if (configFile !is null) {
-                configureFromFile(configFile);
+                    case ParserEvent.Kind.attribute:
+                        auto e = cast(AttributeEvent) event;
+                        logTrace("%s AttributeEvent: %s:%s = %s", typeid(this), e.namespace, e.name, e.value);
+                        onAttribute(e);
+                        break;
+                }
             }
 
-            auto server = new Server(address, port);
-            server.setAuthString(authString);
+            return true;
+        }
 
-            return server;
+        @property
+        bool finished()
+        {
+            return isFinished;
         }
 
     protected:
-        void configureFromFile(string filename)
+        // start of child tag
+        void onTagStart(TagStartEvent event)
         {
-            Tag root = parseFile(filename);
-            Tag server = root.expectTag("server");
+            assert(0, "Tags are not allowed in " ~ event.location.to!string);
+        }
 
-            address = server.getTagValue!string("listen", "127.0.0.1");
-            port = cast(ushort) server.getTagAttribute!int("listen", "port", 1080);
+        // end of current tag
+        void onTagEnd(TagEndEvent event)
+        {
+            // doing nothing
+        }
 
-            string login = server.getTagAttribute!string("auth", "login", null);
-            string password = server.getTagAttribute!string("auth", "password", null);
-            authString = login ~ ":" ~ password;
+        void onValue(ValueEvent event)
+        {
+            assert(0, "Tag can not have a value in " ~ event.location.to!string);
+        }
+
+        void onAttribute(AttributeEvent event)
+        {
+            assert(0, "Tag can not have attributes in " ~ event.location.to!string);
+        }
+
+        // end of child tag
+        void onChildTagEnd(SDLTag node)
+        {
+            // doing nothing
+        }
+}
+
+class SDLRootTag : SDLTag
+{
+    public:
+        this(Configuration conf)
+        {
+            super(conf);
+        }
+
+    protected:
+        override void onTagStart(TagStartEvent event)
+        {
+            switch (event.name) {
+                case "server":
+                    currentNode = new SDLServerTag(conf);
+                    break;
+
+                default:
+                    assert(0, "Unknown key: " ~ event.name.to!string);
+            }
+        }
+}
+
+class SDLServerTag : SDLTag
+{
+    protected:
+        Server server;
+        static uint id;
+
+    public:
+        this(Configuration conf)
+        {
+            super(conf);
+
+            server = new Server;
+            id += 1;
+        }
+
+    protected:
+        override void onTagStart(TagStartEvent event)
+        {
+            switch (event.name) {
+                case "listen":
+                    currentNode = new SDLServerListenTag(conf, server);
+                    break;
+                case "auth":
+                    currentNode = new SDLServerAuthTag(conf, server);
+                    break;
+                default:
+                    assert(0, "Unknown tag: " ~ event.name.to!string);
+            }
+        }
+
+        override void onTagEnd(TagEndEvent event)
+        {
+            isFinished = true;
+            conf.addServer(id, server);
+        }
+}
+
+class SDLServerListenTag : SDLTag
+{
+    protected:
+        Server server;
+        string host;
+        ushort port;
+
+    public:
+        this(Configuration conf, Server server)
+        {
+            super(conf);
+
+            this.server = server;
+        }
+
+    protected:
+        override void onTagEnd(TagEndEvent event)
+        {
+            isFinished = true;
+            server.addListenItem(host, port);
+        }
+
+        override void onValue(ValueEvent event)
+        {
+            host = event.value.to!string;
+        }
+
+        override void onAttribute(AttributeEvent event)
+        {
+            switch (event.name) {
+                case "port":
+                    port = event.value.to!string.to!ushort;
+                    break;
+
+                default:
+                    assert(0, "Unknown attribute: " ~ event.name.to!string);
+            }
+        }
+}
+
+class SDLServerAuthTag : SDLTag
+{
+    protected:
+        Server server;
+        string login;
+        string password;
+
+    public:
+        this(Configuration conf, Server server)
+        {
+            super(conf);
+            this.server = server;
+        }
+
+    protected:
+        override void onTagEnd(TagEndEvent event)
+        {
+            isFinished = true;
+            server.addAuthItem(login, password);
+        }
+
+        override void onValue(ValueEvent event)
+        {
+            login = event.value.to!string;
+        }
+
+        override void onAttribute(AttributeEvent event)
+        {
+            switch (event.name) {
+                case "password":
+                    password = event.value.to!string;
+                    break;
+
+                default:
+                    assert(0, "Unknown attribute: " ~ event.name.to!string);
+            }
         }
 }
