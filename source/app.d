@@ -41,14 +41,18 @@ int main(string[] args)
     }
 
     Server[uint] servers;
-    if (configFile.exists()) {
-        servers = configFile.loadConfig.getServers();
-    } else {
-        infof("config file not found, using default settings");
+    if (configFile is null) {
+        warning("config file not found, using default settings");
 
         auto server = new Server;
         server.addListenItem(address, port);
         servers[0] = server;
+
+    } else if (!configFile.exists()) {
+        fatalf("Config file '%s' not found, terminating.", configFile);
+        return 1;
+    } else {
+        servers = configFile.loadConfig.getServers();
     }
 
     foreach (serverId, server; servers) {
