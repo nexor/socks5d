@@ -3,6 +3,10 @@ module socks5d.packets;
 import std.socket;
 import std.bitmanip;
 import std.conv;
+import std.traits;
+import socks5d.connection;
+
+@safe:
 
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
@@ -91,38 +95,47 @@ abstract class Socks5Packet
 
 abstract class IncomingPacket: Socks5Packet
 {
-    void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
+    void receiveVersion(ref Connection conn, ubyte requiredVersion = 0x05)
     {
-        socket.receive(ver);
+        conn.receive(ver);
         if (ver[0] != requiredVersion) {
             throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
         }
     }
 
-    void receiveBuffer(Socket s, ref ubyte[1] len, ref ubyte[] buf)
+    void receiveBuffer(ref Connection conn, ref ubyte[1] len, ref ubyte[] buf)
     {
-        s.receive(len);
+        conn.receive(len);
         buf = new ubyte[len[0]];
-        s.receive(buf);
+        conn.receive(buf);
     }
 
-    void receive(Socket s);
+    abstract void receive(ref Connection conn) {};
 }
 
 abstract class OutgoingPacket: Socks5Packet
 {
+    deprecated
     abstract void send(Socket s);
+
+    abstract void send(ref Connection conn);
 }
+
+enum bool isSocks5IncomingPacket(P) =
+    hasMember!(P, "receive");
+
+enum bool isSocks5OutgoingPacksocketet(P) =
+    hasMember!(P, "send");
 
 class MethodIdentificationPacket : IncomingPacket
 {
     ubyte[1] nmethods;
     ubyte[]  methods;
 
-    override void receive(Socket socket)
+    override void receive(ref Connection conn)
     {
-        receiveVersion(socket);
-        receiveBuffer(socket, nmethods, methods);
+        receiveVersion(conn);
+        receiveBuffer(conn, nmethods, methods);
     }
 
     AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
@@ -167,10 +180,18 @@ class MethodSelectionPacket : OutgoingPacket
 {
     ubyte method;
 
+    @trusted
     override void send(Socket s)
     {
         s.send(ver);
         s.send((&method)[0..1]);
+    }
+
+    @trusted
+    override void send(ref Connection conn)
+    {
+        conn.send(ver);
+        conn.send((&method)[0..1]);
     }
 }
 
@@ -181,11 +202,11 @@ class AuthPacket : IncomingPacket
     ubyte[1]  plen;
     ubyte[]   passwd;
 
-    override void receive(Socket socket)
+    override void receive(ref Connection conn)
     {
-        receiveVersion(socket, 0x01);
-        receiveBuffer(socket, ulen, uname);
-        receiveBuffer(socket, plen, passwd);
+        receiveVersion(conn, 0x01);
+        receiveBuffer(conn, ulen, uname);
+        receiveBuffer(conn, plen, passwd);
     }
 
     @property
@@ -224,10 +245,18 @@ class AuthStatusPacket : OutgoingPacket
 {
     ubyte status = 0x00;
 
+    @trusted
     override void send(Socket s)
     {
         s.send(ver);
         s.send((&status)[0..1]);
+    }
+
+    @trusted
+    override void send(ref Connection conn)
+    {
+        conn.send(ver);
+        conn.send((&status)[0..1]);
     }
 }
 
@@ -242,16 +271,16 @@ class RequestPacket : IncomingPacket
     private InternetAddress destinationAddress;
 
     // fill structure with data from socket
-    override void receive(Socket socket)
+    override void receive(ref Connection conn)
     {
-        receiveVersion(socket);
-        readRequestCommand(socket);
-        socket.receive(rsv);
+        receiveVersion(conn);
+        readRequestCommand(conn);
+        conn.receive(rsv);
         if (rsv[0] != 0x00) {
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
         }
 
-        destinationAddress = readAddressAndPort(socket);
+        destinationAddress = readAddressAndPort(conn);
     }
 
     InternetAddress getDestinationAddress()
@@ -259,31 +288,31 @@ class RequestPacket : IncomingPacket
         return destinationAddress;
     }
 
-    private void readRequestCommand(Socket socket)
+    private void readRequestCommand(ref Connection conn)
     {
-        socket.receive(cmd);
+        conn.receive(cmd);
         if (cmd[0] != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
                 "Only CONNECT method is supported, given " ~ cmd[0].to!string);
         }
     }
 
-    private InternetAddress readAddressAndPort(Socket socket)
+    private InternetAddress readAddressAndPort(ref Connection conn)
     {
-        socket.receive(atyp);
+        conn.receive(atyp);
 
         switch (atyp[0]) {
             case AddressType.IPV4:
                 dstaddr = new ubyte[4];
-                socket.receive(dstaddr);
-                socket.receive(dstport);
+                conn.receive(dstaddr);
+                conn.receive(dstport);
 
                 return new InternetAddress(dstaddr.read!uint, dstport.bigEndianToNative!ushort);
 
             case AddressType.DOMAIN:
                 ubyte[1] length;
-                receiveBuffer(socket, length, dstaddr);
-                socket.receive(dstport);
+                receiveBuffer(conn, length, dstaddr);
+                conn.receive(dstport);
 
                 return new InternetAddress(cast(char[])dstaddr, dstport.bigEndianToNative!ushort);
 
@@ -346,6 +375,7 @@ class ResponsePacket : OutgoingPacket
     ubyte[4]    bndaddr;
     ubyte[2]    bndport;
 
+    @trusted
     override void send(Socket s)
     {
         s.send(ver);
@@ -354,6 +384,17 @@ class ResponsePacket : OutgoingPacket
         s.send((&atyp)[0..1]);
         s.send(bndaddr);
         s.send(bndport);
+    }
+
+    @trusted
+    override void send(ref Connection conn)
+    {
+        conn.send(ver);
+        conn.send((&rep)[0..1]);
+        conn.send(rsv);
+        conn.send((&atyp)[0..1]);
+        conn.send(bndaddr);
+        conn.send(bndport);
     }
 
     bool setBindAddress(InternetAddress address)

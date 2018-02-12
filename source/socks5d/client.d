@@ -2,6 +2,7 @@ module socks5d.client;
 
 import std.socket;
 import socks5d.packets;
+import socks5d.connection;
 import socks5d.server;
 import std.experimental.logger;
 
@@ -11,6 +12,8 @@ class Client
         uint         id;
         Socket       socket;
         TcpSocket	 targetSocket;
+        Connection   conn;
+        Connection   targetConn;
 
         Server       server;
         AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
@@ -21,6 +24,8 @@ class Client
             socket = clientSocket;
             this.id = id;
             this.server = server;
+            conn = Connection(socket);
+            targetConn = Connection(null);
 
             if (server.hasAuthItems()) {
                 availableMethods = [ AuthMethod.AUTH ];
@@ -36,7 +41,7 @@ class Client
                     infof("[%d] Client successfully authenticated.", id);
                 } else {
                     warningf("[%d] Client failed to authenticate.", id);
-                    socket.close();
+                    conn.close();
 
                     return;
                 }
@@ -44,21 +49,35 @@ class Client
                 if (handshake) {
                     targetToClientSession(socket, targetSocket);
                 } else {
-                    socket.close();
+                    conn.close();
                 }
 
             } catch (SocksException e) {
                 errorf("Error: %s", e.msg);
-                socket.close();
+                conn.close();
             }
         }
 
     protected:
+        void send(P)(ref P packet)
+        if (isSocks5OutgoingPacket!P)
+        {
+            debug tracef("[%d] <- %s", id, packet.printFields);
+            packet.send(conn);
+        }
+
+        void receive(P)(ref P packet)
+        if (isSocks5IncomingPacket!P)
+        {
+            packet.receive(conn);
+            debug tracef("[%d] -> %s", id, packet.printFields);
+        }
+
+
         bool authenticate()
         {
             auto identificationPacket = new MethodIdentificationPacket;
-            identificationPacket.receive(socket);
-            tracef("[%d] -> %s", id, identificationPacket.printFields);
+            receive(identificationPacket);
 
             auto packet2 = new MethodSelectionPacket;
 
@@ -75,8 +94,7 @@ class Client
                 auto authPacket = new AuthPacket;
                 auto authStatus = new AuthStatusPacket;
 
-                authPacket.receive(socket);
-                tracef("[%d] -> %s", id, authPacket.printFields);
+                receive(authPacket);
                 tracef("[%d] Client auth with credentials: %s:%s", id, authPacket.login, authPacket.password);
 
                 if (server.authenticate(authPacket.login, authPacket.password)) {
@@ -103,7 +121,7 @@ class Client
             InternetAddress targetAddress;
 
             try {
-                requestPacket.receive(socket);
+                receive(requestPacket);
             } catch (RequestException e) {
                 errorf("Error: %s", e.msg);
                 packet4.rep = e.replyCode;
@@ -112,8 +130,6 @@ class Client
 
                 return false;
             }
-
-            tracef("[%d] -> %s", id, requestPacket.printFields);
 
             targetSocket = connectToTarget(requestPacket.getDestinationAddress());
 

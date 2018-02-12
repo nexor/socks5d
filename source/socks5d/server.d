@@ -41,7 +41,11 @@ class Server
         {
             foreach (item; listenItems) {
                 new Thread({
-                    listen(item);
+                    auto socket = bindSocket(item.host, item.port, item.backlog);
+
+                    while(true) {
+                        acceptClient(socket);
+                    }
                 }).start();
             }
         }
@@ -94,15 +98,6 @@ class Server
         }
 
     protected:
-        void listen(ListenItem listenItem)
-        {
-            auto socket = bindSocket(listenItem.host, listenItem.port, listenItem.backlog);
-
-            while(true) {
-                acceptClient(socket);
-            }
-        }
-
         TcpSocket bindSocket(string address, ushort port, uint backlog)
         {
             auto socket = new TcpSocket;
