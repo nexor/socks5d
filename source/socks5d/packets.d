@@ -1,10 +1,9 @@
 module socks5d.packets;
 
-import std.socket;
 import std.bitmanip;
 import std.conv;
 import std.traits;
-import socks5d.connection;
+import socks5d.driver;
 
 @safe:
 
@@ -95,7 +94,7 @@ abstract class Socks5Packet
 
 abstract class IncomingPacket: Socks5Packet
 {
-    void receiveVersion(ref Connection conn, ubyte requiredVersion = 0x05)
+    void receiveVersion(Connection conn, ubyte requiredVersion = 0x05)
     {
         conn.receive(ver);
         if (ver[0] != requiredVersion) {
@@ -103,28 +102,25 @@ abstract class IncomingPacket: Socks5Packet
         }
     }
 
-    void receiveBuffer(ref Connection conn, ref ubyte[1] len, ref ubyte[] buf)
+    void receiveBuffer(Connection conn, ref ubyte[1] len, ref ubyte[] buf)
     {
         conn.receive(len);
         buf = new ubyte[len[0]];
         conn.receive(buf);
     }
 
-    abstract void receive(ref Connection conn) {};
+    abstract void receive(Connection conn) {};
 }
 
 abstract class OutgoingPacket: Socks5Packet
 {
-    deprecated
-    abstract void send(Socket s);
-
-    abstract void send(ref Connection conn);
+    abstract void send(Connection conn);
 }
 
 enum bool isSocks5IncomingPacket(P) =
     hasMember!(P, "receive");
 
-enum bool isSocks5OutgoingPacksocketet(P) =
+enum bool isSocks5OutgoingPacket(P) =
     hasMember!(P, "send");
 
 class MethodIdentificationPacket : IncomingPacket
@@ -132,7 +128,7 @@ class MethodIdentificationPacket : IncomingPacket
     ubyte[1] nmethods;
     ubyte[]  methods;
 
-    override void receive(ref Connection conn)
+    override void receive(Connection conn)
     {
         receiveVersion(conn);
         receiveBuffer(conn, nmethods, methods);
@@ -158,8 +154,12 @@ class MethodIdentificationPacket : IncomingPacket
 
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new MethodIdentificationPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
@@ -167,7 +167,7 @@ class MethodIdentificationPacket : IncomingPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
         assert(packet.getNMethods() == 1);
@@ -181,14 +181,7 @@ class MethodSelectionPacket : OutgoingPacket
     ubyte method;
 
     @trusted
-    override void send(Socket s)
-    {
-        s.send(ver);
-        s.send((&method)[0..1]);
-    }
-
-    @trusted
-    override void send(ref Connection conn)
+    override void send(Connection conn)
     {
         conn.send(ver);
         conn.send((&method)[0..1]);
@@ -202,7 +195,7 @@ class AuthPacket : IncomingPacket
     ubyte[1]  plen;
     ubyte[]   passwd;
 
-    override void receive(ref Connection conn)
+    override void receive(Connection conn)
     {
         receiveVersion(conn, 0x01);
         receiveBuffer(conn, ulen, uname);
@@ -223,8 +216,12 @@ class AuthPacket : IncomingPacket
 
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new AuthPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x01,
             5,
@@ -234,7 +231,7 @@ class AuthPacket : IncomingPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 1);
         assert(packet.login ~ ":" ~ packet.password == "tuser:tpasswd");
@@ -246,14 +243,7 @@ class AuthStatusPacket : OutgoingPacket
     ubyte status = 0x00;
 
     @trusted
-    override void send(Socket s)
-    {
-        s.send(ver);
-        s.send((&status)[0..1]);
-    }
-
-    @trusted
-    override void send(ref Connection conn)
+    override void send(Connection conn)
     {
         conn.send(ver);
         conn.send((&status)[0..1]);
@@ -262,6 +252,8 @@ class AuthStatusPacket : OutgoingPacket
 
 class RequestPacket : IncomingPacket
 {
+    import std.socket : InternetAddress;
+
     RequestCmd[1]  cmd;
     ubyte[1]       rsv;
     AddressType[1] atyp;
@@ -271,7 +263,7 @@ class RequestPacket : IncomingPacket
     private InternetAddress destinationAddress;
 
     // fill structure with data from socket
-    override void receive(ref Connection conn)
+    override void receive(Connection conn)
     {
         receiveVersion(conn);
         readRequestCommand(conn);
@@ -288,7 +280,7 @@ class RequestPacket : IncomingPacket
         return destinationAddress;
     }
 
-    private void readRequestCommand(ref Connection conn)
+    private void readRequestCommand(Connection conn)
     {
         conn.receive(cmd);
         if (cmd[0] != RequestCmd.CONNECT) {
@@ -297,7 +289,7 @@ class RequestPacket : IncomingPacket
         }
     }
 
-    private InternetAddress readAddressAndPort(ref Connection conn)
+    private InternetAddress readAddressAndPort(Connection conn)
     {
         conn.receive(atyp);
 
@@ -327,8 +319,12 @@ class RequestPacket : IncomingPacket
     /// test IPv4 address type
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new RequestPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
@@ -339,7 +335,7 @@ class RequestPacket : IncomingPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
         assert(packet.getDestinationAddress().toString() == "10.0.35.94:80");
@@ -348,8 +344,12 @@ class RequestPacket : IncomingPacket
     /// test domain address type
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new RequestPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
@@ -360,7 +360,7 @@ class RequestPacket : IncomingPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
         assert(packet.getDestinationAddress().toString() == "127.0.0.1:80");
@@ -376,18 +376,7 @@ class ResponsePacket : OutgoingPacket
     ubyte[2]    bndport;
 
     @trusted
-    override void send(Socket s)
-    {
-        s.send(ver);
-        s.send((&rep)[0..1]);
-        s.send(rsv);
-        s.send((&atyp)[0..1]);
-        s.send(bndaddr);
-        s.send(bndport);
-    }
-
-    @trusted
-    override void send(ref Connection conn)
+    override void send(Connection conn)
     {
         conn.send(ver);
         conn.send((&rep)[0..1]);
@@ -397,18 +386,23 @@ class ResponsePacket : OutgoingPacket
         conn.send(bndport);
     }
 
-    bool setBindAddress(InternetAddress address)
+    bool setBindAddress(uint address, ushort port)
     {
-        bndport = nativeToBigEndian(address.port);
-        bndaddr = nativeToBigEndian(address.addr);
+        bndport = nativeToBigEndian(port);
+        bndaddr = nativeToBigEndian(address);
 
         return true;
     }
 
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new ResponsePacket;
+        auto address = new InternetAddress("127.0.0.1", 81);
         auto sp = socketPair();
+        auto conn = new StandardConnection(sp[0]);
         immutable ubyte[] output = [
             0x05,
             ReplyCode.SUCCEEDED,
@@ -418,9 +412,9 @@ class ResponsePacket : OutgoingPacket
             0x00, 0x51    // port 81
         ];
 
-        packet.setBindAddress(new InternetAddress("127.0.0.1", 81));
+        packet.setBindAddress(address.addr, address.port);
 
-        packet.send(sp[0]);
+        packet.send(conn);
         ubyte[output.length] buf;
         sp[1].receive(buf);
 

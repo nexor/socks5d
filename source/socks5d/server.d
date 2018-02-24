@@ -1,9 +1,9 @@
 module socks5d.server;
 
+import std.container.array;
 import socks5d.client;
-import std.socket;
-import std.experimental.logger;
-import core.thread : Thread;
+import socks5d.driver;
+import socks5d.factory : f, logger;
 
 struct ListenItem
 {
@@ -24,13 +24,14 @@ class Server
         string address;
         ushort port;
 
-        Client[] clients;
+        Array!Client clients;
         uint clientCounter = 0;
 
-        ListenItem[] listenItems;
-        AuthItem[]   authItems;
+        Array!ListenItem listenItems;
+        Array!AuthItem   authItems;
 
     public:
+        @nogc
         this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
         {
             this.listenItems = listenItems;
@@ -39,22 +40,24 @@ class Server
 
         final void run()
         {
+            import core.thread : Thread;
+
             foreach (item; listenItems) {
                 new Thread({
-                    auto socket = bindSocket(item.host, item.port, item.backlog);
-
-                    while(true) {
-                        acceptClient(socket);
-                    }
+                    auto listener =  f.connectionListener();
+                    logger.info("Listening on %s:%d", item.host, item.port);
+                    listener.listen(item.host, item.port, &onClient);
                 }).start();
             }
         }
 
+        @nogc
         void addListenItem(ListenItem item)
         {
             listenItems ~= item;
         }
 
+        @nogc
         void addListenItem(string host, ushort port)
         {
             ListenItem item = {
@@ -65,11 +68,13 @@ class Server
             listenItems ~= item;
         }
 
+        nothrow @nogc
         void addAuthItem(AuthItem item)
         {
             authItems ~= item;
         }
 
+        nothrow @nogc
         void addAuthItem(string login, string password)
         {
             AuthItem item = {
@@ -80,7 +85,7 @@ class Server
             authItems ~= item;
         }
 
-        nothrow
+        nothrow @nogc
         bool authenticate(string login, string password)
         {
             foreach(item; authItems) {
@@ -92,35 +97,18 @@ class Server
             return false;
         }
 
+        pure nothrow @safe @nogc
         bool hasAuthItems()
         {
             return authItems.length > 0;
         }
 
     protected:
-        TcpSocket bindSocket(string address, ushort port, uint backlog)
+        void onClient(Connection conn)
         {
-            auto socket = new TcpSocket;
-            assert(socket.isAlive);
-            socket.bind(new InternetAddress(address, port));
-            socket.listen(backlog);
-
-            criticalf("Listening on %s", socket.localAddress().toString());
-
-            return socket;
-        }
-
-        void acceptClient(Socket socket)
-        {
-            auto clientSocket = socket.accept();
-            assert(clientSocket.isAlive);
-            assert(socket.isAlive);
-
             clientCounter++;
-            new Thread({
-                auto client = new Client(clientSocket, clientCounter, this);
-                clients ~= client;
-                client.run();
-            }).start();
+            logger.debugN("Got client %d", clientCounter);
+            auto client = new Client(conn, clientCounter, this);
+            client.run();
         }
 }

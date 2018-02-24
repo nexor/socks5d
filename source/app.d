@@ -1,6 +1,7 @@
 import std.stdio, std.getopt, std.file;
 import socks5d.server, socks5d.config;
-import std.experimental.logger;
+import socks5d.factory : f, logger;
+
 import core.thread : Thread;
 
 immutable string versionString = "0.0.4-dev";
@@ -11,52 +12,39 @@ ushort port = defaultPort;
 string address = defaultAddress;
 string authString;
 string configFile;
-byte   verbosity; // log verbosity level
+byte   verbosity = 2; // log verbosity level
 bool   ver;
 
 int main(string[] args)
 {
-    logf(LogLevel.critical, "Starting socks5d server v. %s", versionString);
-
     if (processHelpInformation(args)) {
         return 0;
     }
 
-    switch (verbosity) {
-        case 0:
-            sharedLog.logLevel = LogLevel.critical;
-            break;
-        case 1:
-            sharedLog.logLevel = LogLevel.warning;
-            break;
-        case 2:
-            sharedLog.logLevel = LogLevel.info;
-            break;
-        case 3:
-            sharedLog.logLevel = LogLevel.trace;
-            break;
-        default:
-            sharedLog.logLevel = LogLevel.critical;
-            warningf("Unknown verbosity level: %d", verbosity);
+    bool correctLevel = logger.level(verbosity);
+    if (!correctLevel) {
+        logger.warning("Unknown verbosity level: %d", verbosity);
     }
+
+    logger.info("Starting socks5d server v. %s", versionString);
 
     Server[uint] servers;
     if (configFile is null) {
-        warning("config file not found, using default settings");
+        logger.warning("config file not found, using default settings");
 
         auto server = new Server;
         server.addListenItem(address, port);
         servers[0] = server;
 
     } else if (!configFile.exists()) {
-        fatalf("Config file '%s' not found, terminating.", configFile);
+        logger.fatal("Config file '%s' not found, terminating.", configFile);
         return 1;
     } else {
         servers = configFile.loadConfig.getServers();
     }
 
     foreach (serverId, server; servers) {
-        tracef("Running server %d", serverId);
+        logger.trace("Running server %d", serverId);
         server.run();
     }
 

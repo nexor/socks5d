@@ -6,3 +6,17 @@ license "MIT"
 
 dependency "sdlang-d" version="~master"
 
+configuration "default" {
+	versions   "Socks5dDefaultDriver"
+	targetType "executable"
+}
+
+configuration "vibe-core" {
+	versions   "Socks5dVibeCoreDriver"
+	targetType "executable"
+}
+
+configuration "unittest" {
+	versions   "Socks5dDefaultDriver"
+	excludedSourceFiles "source/app.d"
+}
