@@ -1,12 +1,12 @@
 module socks5d.client;
 
 import vibe.core.core;
-import vibe.core.log;
 import vibe.core.net;
 import socks5d.packets;
+import socks5d.driver;
+import socks5d.factory : f, logger, ConnectionImpl;
 import socks5d.server;
 
-@safe
 class Client
 {
     enum BUFSIZE = 1024*8;
@@ -34,7 +34,7 @@ class Client
 
         final void run()
         {
-            logDiagnostic("[%d] New client accepted: %s", id, conn.remoteAddress().toString());
+            logger.diagnostic("[%d] New client accepted: %s", id, conn.remoteAddress().toString());
 
             try {
                 if (!authenticate()) {
@@ -44,7 +44,7 @@ class Client
                 }
 
                 if (handshake()) {
-                    logDebug("[%d] Handshake OK", id);
+                    logger.debugN("[%d] Handshake OK", id);
 
                     auto task1 = runTask((){
                         pipe(conn, targetConn);
@@ -52,23 +52,23 @@ class Client
                     pipe(targetConn, conn);
 
                 } else {
-                    logDebug("[%d] Handshake error", id);
+                    logger.debugN("[%d] Handshake error", id);
                     conn.close();
                 }
 
             } catch (SocksException e) {
-                logError("[%d] Error: %s", id, e.msg);
+                logger.error("[%d] Error: %s", id, e.msg);
                 conn.close();
             }
 
-            logDebug("[%d] End of session", id);
+            logger.debugN("[%d] End of session", id);
         }
 
     protected:
         void send(P)(ref P packet)
         if (isSocks5OutgoingPacket!P)
         {
-            logDebugV("[%d] send: %s", id, packet.printFields);
+            logger.debugV("[%d] send: %s", id, packet.printFields);
             packet.send(conn);
         }
 
@@ -76,7 +76,7 @@ class Client
         if (isSocks5IncomingPacket!P)
         {
             packet.receive(conn);
-            logDebugV("[%d] recv: %s", id, packet.printFields);
+            logger.debugV("[%d] recv: %s", id, packet.printFields);
         }
 
         bool authenticate()
@@ -94,7 +94,7 @@ class Client
             send(packet2);
 
             if (packet2.getMethod() == AuthMethod.NOTAVAILABLE) {
-                logDiagnostic("[%d] No available method to authenticate.", id);
+                logger.diagnostic("[%d] No available method to authenticate.", id);
                 return false;
             }
 
@@ -103,18 +103,18 @@ class Client
                 AuthStatusPacket authStatusPacket;
 
                 receive(authPacket);
-                logDebugV("[%d] Client auth with credentials: %s:***", id, authPacket.login);
+                logger.debugV("[%d] Client auth with credentials: %s:***", id, authPacket.login);
 
                 if (server.authenticate(authPacket.login, authPacket.password)) {
                     authStatusPacket.setStatus(AuthStatus.YES);
                     send(authStatusPacket);
-                    logDiagnostic("[%d] Client successfully authenticated.", id);
+                    logger.diagnostic("[%d] Client successfully authenticated.", id);
 
                     return true;
                 } else {
                     authStatusPacket.setStatus(AuthStatus.NO);
                     send(authStatusPacket);
-                    logDiagnostic("[%d] Client failed to authenticate.", id);
+                    logger.diagnostic("[%d] Client failed to authenticate.", id);
 
                     return false;
                 }
@@ -131,14 +131,14 @@ class Client
             try {
                 receive(requestPacket);
             } catch (RequestException e) {
-                logWarn("[%d] Error: %s", id, e.msg);
+                logger.warning("[%d] Error: %s", id, e.msg);
                 responsePacket.replyCode = e.replyCode;
                 send(responsePacket);
 
                 return false;
             }
 
-            logDebugV("[%d] Connecting to %s:%d", id, requestPacket.getHost(), requestPacket.getPort());
+            logger.debugV("[%d] Connecting to %s:%d", id, requestPacket.getHost(), requestPacket.getPort());
             targetConn = connectTCP(requestPacket.getHost(), requestPacket.getPort());
 
             responsePacket.addressType = AddressType.IPV4;
@@ -159,12 +159,12 @@ class Client
             try {
                 while (src.waitForData()) {
                     chunk = src.peek().length;
-                    debug logTrace("Read src chunk %d", chunk);
+                    debug logger.debugV("Read src chunk %d", chunk);
                     dst.write(src.peek());
                     src.skip(chunk);
                 }
             } catch (Exception e) {
-                logError("[%d] Client closed connection", id);
+                logger.error("[%d] Client closed connection", id);
             }
         }
 }

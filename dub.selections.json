@@ -1,10 +1,10 @@
 {
 	"fileVersion": 1,
 	"versions": {
-		"eventcore": "0.8.27",
+		"eventcore": "0.8.28",
 		"libasync": "0.8.3",
 		"libinputvisitor": "1.2.2",
-		"memutils": "0.4.9",
+		"memutils": "0.4.10",
 		"sdlang-d": "~master",
 		"stdx-allocator": "2.77.0",
 		"taggedalgebraic": "0.10.9",

@@ -3,8 +3,8 @@ module socks5d.packets;
 import std.bitmanip;
 import std.conv;
 import std.traits;
+import socks5d.factory : logger;
 import vibe.core.stream;
-import vibe.core.log;
 
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
@@ -121,7 +121,7 @@ mixin template Socks5IncomingPacket()
     {
         conn.read(ver);
 
-        debug logTrace("[%d] Received version: %d", connID, ver[0]);
+        debug logger.trace("[%d] Received version: %d", connID, ver[0]);
 
         if (ver[0] != requiredVersion) {
             throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
@@ -134,14 +134,12 @@ mixin template Socks5IncomingPacket()
     {
         conn.read(len);
 
-        debug logTrace("[%d] Received buffer length: %d", connID, len[0]);
+        debug logger.trace("[%d] Received buffer length: %d", connID, len[0]);
 
         buf = new ubyte[len[0]];
         conn.read(buf);
     }
 }
-
-
 
 mixin template Socks5OutgoingPacket()
 {
@@ -331,7 +329,7 @@ struct RequestPacket
         readRequestCommand(conn);
         conn.read(rsv);
 
-        debug logTrace("[%d] Received rsv: %d", connID, rsv[0]);
+        debug logger.trace("[%d] Received rsv: %d", connID, rsv[0]);
 
         if (rsv[0] != 0x00) {
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
@@ -355,7 +353,7 @@ struct RequestPacket
     {
         conn.read(cast(ubyte[1])cmd);
 
-        debug logTrace("[%d] Received request command: %s", connID, cmd[0]);
+        debug logger.trace("[%d] Received request command: %s", connID, cmd[0]);
 
         if (cmd[0] != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
@@ -373,7 +371,7 @@ struct RequestPacket
 
         switch (atyp[0]) {
             case AddressType.IPV4:
-                debug logTrace("[%d] Address type: IPV4", connID);
+                debug logger.trace("[%d] Address type: IPV4", connID);
 
                 dstaddr = new ubyte[4];
                 conn.read(dstaddr);
@@ -383,23 +381,23 @@ struct RequestPacket
                 break;
 
             case AddressType.DOMAIN:
-                debug logTrace("[%d] Adress type: DOMAIN", connID);
+                debug logger.trace("[%d] Adress type: DOMAIN", connID);
 
                 ubyte[1] length;
                 receiveBuffer(conn, length, dstaddr);
                 conn.read(dstport);
                 host = stringDstaddr();
 
-                logDebug("[%d] Request connect to %s", connID, host);
+                logger.debugN("[%d] Request connect to %s", connID, host);
                 break;
 
             case AddressType.IPV6:
-                debug logTrace("[%d] Address type: IPV6", connID);
+                debug logger.trace("[%d] Address type: IPV6", connID);
 
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "AddressType=ipv6 is not supported");
 
             default:
-                debug logTrace("[%d] Address type: UNKNOWN", connID);
+                debug logger.trace("[%d] Address type: UNKNOWN", connID);
 
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp[0]);
         }
@@ -416,8 +414,12 @@ struct RequestPacket
     /// test IPv4 address type
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new RequestPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
@@ -428,7 +430,7 @@ struct RequestPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
         assert(packet.getDestinationAddress().toString() == "10.0.35.94:80");
@@ -437,8 +439,12 @@ struct RequestPacket
     /// test domain address type
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new RequestPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
@@ -449,7 +455,7 @@ struct RequestPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
         assert(packet.getDestinationAddress().toString() == "127.0.0.1:80");
@@ -506,7 +512,7 @@ struct ResponsePacket
         debug {
             import std.socket;
             auto address = new InternetAddress(ip4, port);
-            logTrace("[%d] Local target address: %s", connID, address.toAddrString());
+            logger.trace("[%d] Local target address: %s", connID, address.toAddrString());
         }
 
         return true;

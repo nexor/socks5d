@@ -1,8 +1,8 @@
 import socks5d.server, socks5d.config;
 import vibe.core.core;
-import vibe.core.log;
 import vibe.core.args;
 import vibe.core.file;
+import socks5d.factory : f, logger;
 
 immutable string versionString = "0.0.4-dev";
 
@@ -15,11 +15,11 @@ int main(string[] args)
 {
     readOption("config", &configFile, "config file");
 
-    logInfo("Starting socks5d server v. %s", versionString);
+    logger.info("Starting socks5d server v. %s", versionString);
 
     Server[uint] servers;
     if (configFile is null) {
-        logWarn("config file not found, using default settings");
+        logger.warning("config file not found, using default settings");
 
         auto server = new Server;
 
@@ -27,14 +27,14 @@ int main(string[] args)
         servers[0] = server;
 
     } else if (!configFile.existsFile()) {
-        logFatal("Config file '%s' not found, terminating.", configFile);
+        logger.fatal("Config file '%s' not found, terminating.", configFile);
         return 1;
     } else {
         servers = configFile.loadConfig.getServers();
     }
 
     foreach (serverId, server; servers) {
-        logDiagnostic("Running server %d", serverId);
+        logger.diagnostic("Running server %d", serverId);
         server.run();
     }
 

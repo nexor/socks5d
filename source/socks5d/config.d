@@ -2,7 +2,7 @@ module socks5d.config;
 
 import sdlang.parser;
 import socks5d.server;
-import vibe.core.log;
+import socks5d.factory : logger;
 import std.conv, std.file, std.algorithm.iteration;
 
 Configuration loadConfig(string filename)
@@ -11,7 +11,7 @@ Configuration loadConfig(string filename)
     auto conf = new Configuration;
     auto rootNode = new SDLRootTag(conf);
 
-    logDiagnostic("Parsing config file %s", filename);
+    logger.diagnostic("Parsing config file %s", filename);
 
     source.pullParseSource(filename).each!(event => rootNode.parse(event));
 
@@ -64,26 +64,26 @@ abstract class SDLTag
                 final switch(event.kind) {
                     case ParserEvent.Kind.tagStart:
                         auto e = cast(TagStartEvent) event;
-                        logDebugV("%s TagStartEvent: %s:%s @ %s", typeid(this), e.namespace, e.name, e.location);
+                        logger.debugV("%s TagStartEvent: %s:%s @ %s", typeid(this), e.namespace, e.name, e.location);
                         onTagStart(e);
                         break;
 
                     case ParserEvent.Kind.tagEnd:
                         auto e = cast(TagEndEvent) event;
-                        logDebugV("%s TagEndEvent", typeid(this));
+                        logger.debugV("%s TagEndEvent", typeid(this));
                         onTagEnd(e);
                         assert(isFinished == true);
                         break;
 
                     case ParserEvent.Kind.value:
                         auto e = cast(ValueEvent) event;
-                        logDebugV("%s ValueEvent: %s", typeid(this), e.value);
+                        logger.debugV("%s ValueEvent: %s", typeid(this), e.value);
                         onValue(e);
                         break;
 
                     case ParserEvent.Kind.attribute:
                         auto e = cast(AttributeEvent) event;
-                        logDebugV("%s AttributeEvent: %s:%s = %s", typeid(this), e.namespace, e.name, e.value);
+                        logger.debugV("%s AttributeEvent: %s:%s = %s", typeid(this), e.namespace, e.name, e.value);
                         onAttribute(e);
                         break;
                 }

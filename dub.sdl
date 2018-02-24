@@ -4,8 +4,22 @@ authors     "Pavel Chebotarev"
 
 license "MIT"
 
-dependency "vibe-core" version="~>1.3.0"
 dependency "sdlang-d" version="~master"
 
+configuration "default" {
+	versions   "Socks5dDefaultDriver"
+	targetType "executable"
+}
 
-subConfiguration "vibe-core" "select"
+configuration "vibe-core" {
+	versions   "Socks5dVibeCoreDriver"
+
+	dependency "vibe-core" version="~>1.3.0"
+
+	targetType "executable"
+}
+
+configuration "unittest" {
+	versions   "Socks5dDefaultDriver"
+	excludedSourceFiles "source/app.d"
+}

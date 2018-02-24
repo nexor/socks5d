@@ -1,7 +1,9 @@
 module socks5d.server;
 
+import std.container.array;
 import socks5d.client;
-import vibe.core.log;
+import socks5d.driver;
+import socks5d.factory : f, logger;
 import vibe.core.net;
 
 struct ListenItem
@@ -16,7 +18,7 @@ struct AuthItem
     string password;
 }
 
-@safe nothrow
+nothrow
 class Server
 {
     private:
@@ -24,10 +26,11 @@ class Server
         ushort port;
         shared static uint clientCounter = 0;
 
-        ListenItem[] listenItems;
-        AuthItem[]   authItems;
+        Array!ListenItem listenItems;
+        Array!AuthItem   authItems;
 
     public:
+        @nogc
         this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
         {
             this.listenItems = listenItems;
@@ -37,16 +40,18 @@ class Server
         final void run()
         {
             foreach (item; listenItems) {
-                logInfo("Listening %s:%d", item.host, item.port);
+                logger.info("Listening %s:%d", item.host, item.port);
                 listenTCP(item.port, &handleConnection, item.host);
             }
         }
 
+        @nogc
         void addListenItem(ListenItem item)
         {
             listenItems ~= item;
         }
 
+        @nogc
         void addListenItem(string host, ushort port)
         {
             ListenItem item = {
@@ -57,11 +62,13 @@ class Server
             listenItems ~= item;
         }
 
+        nothrow @nogc
         void addAuthItem(AuthItem item)
         {
             authItems ~= item;
         }
 
+        nothrow @nogc
         void addAuthItem(string login, string password)
         {
             AuthItem item = {
@@ -72,7 +79,7 @@ class Server
             authItems ~= item;
         }
 
-        nothrow
+        nothrow @nogc
         bool authenticate(string login, string password)
         {
             foreach (item; authItems) {
@@ -84,6 +91,7 @@ class Server
             return false;
         }
 
+        pure nothrow @safe @nogc
         bool hasAuthItems()
         {
             return authItems.length > 0;
@@ -102,7 +110,7 @@ class Server
                 client.run();
             } catch (Exception e) {
                 scope (failure) assert(false);
-                logError("Connection error: %s", e.msg);
+                logger.error("Connection error: %s", e.msg);
             }
         }
 }
