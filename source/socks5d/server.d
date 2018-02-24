@@ -30,6 +30,8 @@ class Server
         Array!AuthItem   authItems;
 
     public:
+        uint id;
+
         @nogc
         this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
         {

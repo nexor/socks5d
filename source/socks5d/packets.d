@@ -3,6 +3,7 @@ module socks5d.packets;
 import std.bitmanip;
 import std.conv;
 import std.traits;
+import socks5d.driver;
 import socks5d.factory : logger;
 import vibe.core.stream;
 

@@ -7,6 +7,7 @@ version (Socks5dDefaultDriver)
 {
     import socks5d.drivers.standard;
 
+    alias ApplicationImpl        = StandardApplication;
     alias ConnectionImpl         = StandardConnection;
     alias ConnectionListenerImpl = StandardConnectionListener;
     alias LoggerImpl             = StandardLogger;
@@ -15,6 +16,7 @@ else version (Socks5dVibeCoreDriver)
 {
     import socks5d.drivers.vibecore;
 
+    alias ApplicationImpl        = VibeCoreApplication;
     alias ConnectionImpl         = VibeCoreConnection;
     alias ConnectionListenerImpl = VibeCoreConnectionListener;
     alias LoggerImpl             = VibeCoreLogger;
@@ -45,6 +47,11 @@ LoggerImpl logger()
 @safe
 final class Factory
 {
+    Application application()
+    {
+        return new ApplicationImpl();
+    }
+
     /**
     */
     Connection connection()

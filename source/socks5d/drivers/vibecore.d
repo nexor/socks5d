@@ -2,8 +2,42 @@ module socks5d.drivers.vibecore;
 
 import socks5d.factory;
 import socks5d.driver;
+import socks5d.server;
+import vibe.core.core;
 import std.socket;
 import std.variant;
+import std.container.array;
+
+final class VibeCoreApplication : Application
+{
+    protected:
+        Array!Server servers;
+
+    public:
+        @nogc
+        void addServer(Server server)
+        {
+            server.id = cast(uint)this.servers.length;
+            this.servers ~= server;
+        }
+
+        int run()
+        {
+            foreach (server; servers) {
+                logger.diagnostic("Running server %d", server.id);
+                server.run();
+            }
+
+            return runApplication();
+        }
+
+        bool fileExists(string filename)
+        {
+            import vibe.core.file;
+
+            return filename.existsFile();
+        }
+}
 
 /** Connection implementation.
 */
@@ -223,12 +257,15 @@ final class VibeCoreLogger : Logger
                 setLogLevel(LogLevel.info);
                 break;
             case 1:
+                setLogFormat(FileLogger.Format.thread);
                 setLogLevel(LogLevel.diagnostic);
                 break;
             case 2:
+                setLogFormat(FileLogger.Format.thread);
                 setLogLevel(LogLevel.debug_);
                 break;
             case 3:
+                setLogFormat(FileLogger.Format.threadTime, FileLogger.Format.threadTime);
                 setLogLevel(LogLevel.debugV);
                 break;
             default:
