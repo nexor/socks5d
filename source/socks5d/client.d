@@ -75,14 +75,15 @@ class Client
 
         bool authenticate()
         {
-            auto identificationPacket = new MethodIdentificationPacket;
+            MethodIdentificationPacket identificationPacket = {
+                connID: id,
+            };
             receive(identificationPacket);
 
-            auto packet2 = new MethodSelectionPacket;
+            MethodSelectionPacket packet2;
 
             packet2.method = identificationPacket.detectAuthMethod(availableMethods);
 
-            logger.trace("[%d] <- %s", id, packet2.printFields);
             send(packet2);
 
             if (packet2.method == AuthMethod.NOTAVAILABLE) {
@@ -90,15 +91,17 @@ class Client
             }
 
             if (packet2.method == AuthMethod.AUTH) {
-                auto authPacket = new AuthPacket;
-                auto authStatus = new AuthStatusPacket;
+                AuthPacket authPacket = {
+                    connID : id,
+                };
+                AuthStatusPacket authStatus;
 
                 receive(authPacket);
-                //logger.trace("[%d] Client auth with credentials: %s:%s", id, authPacket.login, authPacket.password);
+                logger.trace("[%d] Client auth with credentials: %s:%s", id, authPacket.login, authPacket.password);
 
                 if (server.authenticate(authPacket.login, authPacket.password)) {
                     authStatus.status = 0x00;
-                    //logger.trace("[%d] <- %s", id, authStatus.printFields);
+                    logger.trace("[%d] <- %s", id, authStatus.printFields);
                     send(authStatus);
 
                     return true;
@@ -115,16 +118,17 @@ class Client
 
         bool handshake()
         {
-            auto requestPacket = new RequestPacket;
-            auto packet4 = new ResponsePacket;
+            RequestPacket requestPacket = {
+                connID: id,
+            };
+            ResponsePacket packet4;
             InternetAddress targetAddress;
 
             try {
                 receive(requestPacket);
             } catch (RequestException e) {
-                //logger.error("Error: %s", e.msg);
+                logger.error("Error: %s", e.msg);
                 packet4.rep = e.replyCode;
-                //logger.trace("[%d] <- %s", id, packet4.printFields);
                 send(packet4);
 
                 return false;
@@ -138,8 +142,7 @@ class Client
                 targetConn.localAddress.port
             );
 
-            //logger.trace("[%d] Local target address: %s", id, targetConn.localAddress.toString());
-            //logger.trace("[%d] <- %s", id, packet4.printFields);
+            logger.trace("[%d] Local target address: %s", id, targetConn.localAddress);
             send(packet4);
 
             return true;
@@ -148,54 +151,8 @@ class Client
         bool connectToTarget(InternetAddress address)
         body {
             targetConn.connect(address);
-            //logger.trace("[%d] Connecting to target %s", id, address.toString());
+            logger.trace("[%d] Connecting to target %s", id, address.toString());
 
             return targetConn.connect(address);
         }
-/+
-        void targetToClientSession(Socket clientSocket, Socket targetSocket)
-        {
-            auto sset = new SocketSet(2);
-            ubyte[1024*8] buffer;
-            ptrdiff_t received;
-
-            for (;; sset.reset()) {
-                sset.add(clientSocket);
-                sset.add(targetSocket);
-
-                if (Socket.select(sset, null, null) <= 0) {
-                    infof("[%d] End of data transfer", id);
-                    break;
-                }
-
-                if (sset.isSet(clientSocket)) {
-                    received = clientSocket.receive(buffer);
-                    if (received == Socket.ERROR) {
-                        warningf("[%d] Connection error on clientSocket.", id);
-                        break;
-                    } else if (received == 0) {
-                        infof("[%d] Client connection closed.", id);
-                        break;
-                    }
-
-                    targetSocket.send(buffer[0..received]);
-                }
-
-                if (sset.isSet(targetSocket)) {
-                    received = targetSocket.receive(buffer);
-                    if (received == Socket.ERROR) {
-                        warningf("[%d] Connection error on targetSocket.", id);
-                        break;
-                    } else if (received == 0) {
-                        infof("[%d] Target connection closed.", id);
-                        break;
-                    }
-
-                    clientSocket.send(buffer[0..received]);
-                }
-            }
-
-            clientSocket.close();
-            targetSocket.close();
-        } +/
 }

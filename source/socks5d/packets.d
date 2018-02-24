@@ -152,7 +152,7 @@ enum bool isSocks5IncomingPacket(P) =
 enum bool isSocks5OutgoingPacket(P) =
     hasMember!(P, "send");
 
-class MethodIdentificationPacket
+struct MethodIdentificationPacket
 {
     mixin Socks5IncomingPacket;
 
@@ -207,7 +207,7 @@ class MethodIdentificationPacket
     }
 }
 
-class MethodSelectionPacket
+struct MethodSelectionPacket
 {
     mixin Socks5OutgoingPacket;
 
@@ -221,7 +221,7 @@ class MethodSelectionPacket
     }
 }
 
-class AuthPacket
+struct AuthPacket
 {
     mixin Socks5IncomingPacket;
 
@@ -273,7 +273,7 @@ class AuthPacket
     }
 }
 
-class AuthStatusPacket
+struct AuthStatusPacket
 {
     mixin Socks5OutgoingPacket;
 
@@ -287,7 +287,7 @@ class AuthStatusPacket
     }
 }
 
-class RequestPacket
+struct RequestPacket
 {
     mixin Socks5IncomingPacket;
 
@@ -406,7 +406,7 @@ class RequestPacket
     }
 }
 
-class ResponsePacket
+struct ResponsePacket
 {
     mixin Socks5OutgoingPacket;
 
