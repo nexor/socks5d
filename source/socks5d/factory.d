@@ -61,17 +61,6 @@ final class Factory
 
     /**
     */
-    @trusted
-    Connection connection(Variant driverConn)
-    {
-        auto conn = connection();
-        conn.setupConnection(driverConn);
-
-        return conn;
-    }
-
-    /**
-    */
     ConnectionListener connectionListener()
     {
         return new ConnectionListenerImpl(logger);
