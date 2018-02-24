@@ -186,11 +186,14 @@ struct MethodIdentificationPacket
         return nmethods[0];
     }
 
-    /*
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new MethodIdentificationPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
@@ -198,13 +201,13 @@ struct MethodIdentificationPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
         assert(packet.getNMethods() == 1);
         assert(packet.detectAuthMethod([AuthMethod.NOAUTH]) == AuthMethod.NOAUTH);
         assert(packet.detectAuthMethod([AuthMethod.AUTH]) == AuthMethod.NOTAVAILABLE);
-    } */
+    }
 }
 
 @safe
@@ -262,11 +265,14 @@ struct AuthPacket
         return cast(string)passwd;
     }
 
-/*
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new AuthPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x01,
             5,
@@ -276,12 +282,11 @@ struct AuthPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 1);
-        assert(packet.login == "tuser");
-        assert(packet.password == "tpasswd");
-    } */
+        assert(packet.login ~ ":" ~ packet.password == "tuser:tpasswd");
+    }
 }
 
 @safe
@@ -410,8 +415,6 @@ struct RequestPacket
         return cast(string)dstaddr;
     }
 
-/*
-@todo
     /// test IPv4 address type
     unittest
     {
@@ -460,7 +463,7 @@ struct RequestPacket
 
         assert(packet.getVersion() == 5);
         assert(packet.getDestinationAddress().toString() == "127.0.0.1:80");
-    } */
+    }
 }
 
 
@@ -518,11 +521,16 @@ struct ResponsePacket
 
         return true;
     }
-/*
+
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new ResponsePacket;
+        auto address = new InternetAddress("127.0.0.1", 81);
         auto sp = socketPair();
+        auto conn = new StandardConnection(sp[0]);
         immutable ubyte[] output = [
             0x05,
             ReplyCode.SUCCEEDED,
@@ -532,12 +540,12 @@ struct ResponsePacket
             0x00, 0x51    // port 81
         ];
 
-        packet.setBindAddress(new InternetAddress("127.0.0.1", 81));
+        packet.setBindAddress(address.addr, address.port);
 
-        packet.send(sp[0]);
+        packet.send(conn);
         ubyte[output.length] buf;
         sp[1].receive(buf);
 
         assert(buf == output);
-    } */
+    }
 }

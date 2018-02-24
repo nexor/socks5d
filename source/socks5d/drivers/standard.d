@@ -2,8 +2,10 @@ module socks5d.drivers.standard;
 
 import socks5d.factory;
 import socks5d.driver;
+import socks5d.server;
 import std.socket;
 import std.variant;
+import std.container.array;
 
 /** Connection implementation.
 */
@@ -144,6 +146,37 @@ class StandardConnection : Connection
 
 import core.thread : Thread;
 
+final class StandardApplication : Application
+{
+    protected:
+        Array!Server servers;
+
+    public:
+        @nogc
+        void addServer(Server server)
+        {
+            server.id = cast(uint)this.servers.length;
+            this.servers ~= server;
+        }
+
+        int run()
+        {
+            foreach (server; servers) {
+                logger.diagnostic("Running server %d", server.id);
+                server.run();
+            }
+
+            return 0;
+        }
+
+        bool fileExists(string filename)
+        {
+            import std.file;
+
+            return filename.exists();
+        }
+}
+
 /** ConnectionListener implementation
 */
 class StandardConnectionListener : ConnectionListener
@@ -220,13 +253,13 @@ final class StandardLogger : Logger
     {
         switch (level) {
             case 0:
-                sharedLog.logLevel = LogLevel.critical;
+                sharedLog.logLevel = LogLevel.info;
                 break;
             case 1:
-                sharedLog.logLevel = LogLevel.warning;
+                sharedLog.logLevel = LogLevel.trace;
                 break;
             case 2:
-                sharedLog.logLevel = LogLevel.info;
+                sharedLog.logLevel = LogLevel.trace;
                 break;
             case 3:
                 sharedLog.logLevel = LogLevel.trace;
