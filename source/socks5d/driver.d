@@ -2,6 +2,17 @@ module socks5d.driver;
 
 import std.socket : InternetAddress;
 import std.variant;
+import socks5d.server;
+
+
+interface Application
+{
+    int run();
+
+    void addServer(Server server);
+
+    bool fileExists(string filename);
+}
 
 /** Connection iunterface
 */

@@ -7,6 +7,7 @@ version (Socks5dDefaultDriver)
 {
     import socks5d.drivers.standard;
 
+    alias ApplicationImpl        = StandardApplication;
     alias ConnectionImpl         = StandardConnection;
     alias ConnectionListenerImpl = StandardConnectionListener;
     alias LoggerImpl             = StandardLogger;
@@ -41,6 +42,11 @@ LoggerImpl logger()
 @safe
 final class Factory
 {
+    Application application()
+    {
+        return new ApplicationImpl();
+    }
+
     /**
     */
     Connection connection()
