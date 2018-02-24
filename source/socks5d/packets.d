@@ -4,6 +4,7 @@ import std.bitmanip;
 import std.conv;
 import std.traits;
 import socks5d.driver;
+import socks5d.factory : logger;
 
 @safe:
 
@@ -112,31 +113,37 @@ mixin template Socks5Packet()
     }
 }
 
-abstract class IncomingPacket
+mixin template Socks5IncomingPacket()
 {
     mixin Socks5Packet;
+
+    @safe
     void receiveVersion(Connection conn, ubyte requiredVersion = 0x05)
     {
         conn.receive(ver);
+
+        logger.trace("[%d] Received version: %d", connID, ver[0]);
+
         if (ver[0] != requiredVersion) {
             throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
         }
     }
 
+    @safe
     void receiveBuffer(Connection conn, ref ubyte[1] len, ref ubyte[] buf)
     {
         conn.receive(len);
+
+        logger.trace("[%d] Received buffer length: %d", connID, len[0]);
+
         buf = new ubyte[len[0]];
         conn.receive(buf);
     }
-
-    abstract void receive(Connection conn) {};
 }
 
-abstract class OutgoingPacket
+mixin template Socks5OutgoingPacket()
 {
     mixin Socks5Packet;
-    abstract void send(Connection conn);
 }
 
 enum bool isSocks5IncomingPacket(P) =
@@ -145,12 +152,14 @@ enum bool isSocks5IncomingPacket(P) =
 enum bool isSocks5OutgoingPacket(P) =
     hasMember!(P, "send");
 
-class MethodIdentificationPacket : IncomingPacket
+class MethodIdentificationPacket
 {
+    mixin Socks5IncomingPacket;
+
     ubyte[1] nmethods;
     ubyte[]  methods;
 
-    override void receive(Connection conn)
+    void receive(Connection conn)
     {
         receiveVersion(conn);
         receiveBuffer(conn, nmethods, methods);
@@ -198,26 +207,30 @@ class MethodIdentificationPacket : IncomingPacket
     }
 }
 
-class MethodSelectionPacket : OutgoingPacket
+class MethodSelectionPacket
 {
+    mixin Socks5OutgoingPacket;
+
     ubyte method;
 
     @trusted
-    override void send(Connection conn)
+    void send(Connection conn)
     {
         conn.send(ver);
         conn.send((&method)[0..1]);
     }
 }
 
-class AuthPacket : IncomingPacket
+class AuthPacket
 {
+    mixin Socks5IncomingPacket;
+
     ubyte[1]  ulen;
     ubyte[]   uname;
     ubyte[1]  plen;
     ubyte[]   passwd;
 
-    override void receive(Connection conn)
+    void receive(Connection conn)
     {
         receiveVersion(conn, 0x01);
         receiveBuffer(conn, ulen, uname);
@@ -260,20 +273,24 @@ class AuthPacket : IncomingPacket
     }
 }
 
-class AuthStatusPacket : OutgoingPacket
+class AuthStatusPacket
 {
+    mixin Socks5OutgoingPacket;
+
     ubyte status = 0x00;
 
     @trusted
-    override void send(Connection conn)
+    void send(Connection conn)
     {
         conn.send(ver);
         conn.send((&status)[0..1]);
     }
 }
 
-class RequestPacket : IncomingPacket
+class RequestPacket
 {
+    mixin Socks5IncomingPacket;
+
     import std.socket : InternetAddress;
 
     RequestCmd[1]  cmd;
@@ -285,7 +302,7 @@ class RequestPacket : IncomingPacket
     private InternetAddress destinationAddress;
 
     // fill structure with data from socket
-    override void receive(Connection conn)
+    void receive(Connection conn)
     {
         receiveVersion(conn);
         readRequestCommand(conn);
@@ -389,8 +406,10 @@ class RequestPacket : IncomingPacket
     }
 }
 
-class ResponsePacket : OutgoingPacket
+class ResponsePacket
 {
+    mixin Socks5OutgoingPacket;
+
     ReplyCode   rep = ReplyCode.SUCCEEDED;
     ubyte[1]    rsv = [0x00];
     AddressType atyp;
@@ -398,7 +417,7 @@ class ResponsePacket : OutgoingPacket
     ubyte[2]    bndport;
 
     @trusted
-    override void send(Connection conn)
+    void send(Connection conn)
     {
         conn.send(ver);
         conn.send((&rep)[0..1]);
