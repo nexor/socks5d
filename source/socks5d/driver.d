@@ -1,7 +1,6 @@
 module socks5d.driver;
 
 import std.socket : InternetAddress;
-import std.variant;
 import socks5d.server;
 
 
@@ -19,9 +18,6 @@ interface Application
 interface Connection
 {
     @safe:
-
-    /// Setup connection with internal connection instance
-    void setupConnection(Variant driverConn);
 
     /// Local address
     @property

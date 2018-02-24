@@ -4,7 +4,6 @@ import socks5d.factory;
 import socks5d.driver;
 import socks5d.server;
 import std.socket;
-import std.variant;
 import std.container.array;
 
 /** Connection implementation.
@@ -24,12 +23,6 @@ class StandardConnection : Connection
             socket = new TcpSocket;
         }
         this.logger = logger;
-    }
-
-    @trusted
-    void setupConnection(Variant driverConn)
-    {
-        socket = driverConn.get!Socket;
     }
 
     @property
@@ -234,7 +227,8 @@ class StandardConnectionListener : ConnectionListener
             auto clientSocket = socket.accept();
             assert(clientSocket.isAlive);
             assert(socket.isAlive);
-            auto conn = f.connection(cast(Variant)clientSocket);
+            auto conn = cast(StandardConnection)f.connection();
+            conn.socket = clientSocket;
 
             logger.debugV("Accepted connection %s", socket.localAddress);
 
