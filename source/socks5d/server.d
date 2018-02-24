@@ -4,7 +4,6 @@ import std.container.array;
 import socks5d.client;
 import socks5d.driver;
 import socks5d.factory : f, logger;
-import vibe.core.net;
 
 struct ListenItem
 {
@@ -42,8 +41,9 @@ class Server
         final void run()
         {
             foreach (item; listenItems) {
-                logger.info("Listening %s:%d", item.host, item.port);
-                listenTCP(item.port, &handleConnection, item.host);
+                auto listener = f.connectionListener();
+                logger.info("Listening on %s:%d", item.host, item.port);
+                listener.listen(item.host, item.port, &onClient);
             }
         }
 
@@ -101,14 +101,15 @@ class Server
 
     protected:
         nothrow
-        void handleConnection(TCPConnection conn)
+        void onClient(Connection conn)
         {
             import core.atomic : atomicOp;
 
+            atomicOp!"+="(clientCounter, 1);
+            logger.debugN("Git client %d", clientCounter);
+            
             try {
-                atomicOp!"+="(clientCounter, 1);
                 auto client = new Client(conn, clientCounter, this);
-
                 client.run();
             } catch (Exception e) {
                 scope (failure) assert(false);

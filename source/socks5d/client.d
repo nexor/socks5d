@@ -1,7 +1,5 @@
 module socks5d.client;
 
-import vibe.core.core;
-import vibe.core.net;
 import socks5d.packets;
 import socks5d.driver;
 import socks5d.factory : f, logger, ConnectionImpl;
@@ -14,18 +12,19 @@ class Client
     protected:
         uint     id;
 
-        TCPConnection conn;
-        TCPConnection targetConn;
+        Connection conn;
+        Connection targetConn;
 
         Server        server;
         AuthMethod[]  availableMethods = [ AuthMethod.NOAUTH ];
 
     public:
-        this(TCPConnection conn, uint id, Server server)
+        this(Connection conn, uint id, Server server)
         {
-            this.conn = conn;
             this.id = id;
             this.server = server;
+            this.conn = conn;
+            targetConn = f.connection();
 
             if (server.hasAuthItems()) {
                 availableMethods = [ AuthMethod.AUTH ];
@@ -46,11 +45,7 @@ class Client
                 if (handshake()) {
                     logger.debugN("[%d] Handshake OK", id);
 
-                    auto task1 = runTask((){
-                        pipe(conn, targetConn);
-                    });
-                    pipe(targetConn, conn);
-
+                    conn.duplexPipe(targetConn, id);
                 } else {
                     logger.debugN("[%d] Handshake error", id);
                     conn.close();
@@ -139,32 +134,16 @@ class Client
             }
 
             logger.debugV("[%d] Connecting to %s:%d", id, requestPacket.getHost(), requestPacket.getPort());
-            targetConn = connectTCP(requestPacket.getHost(), requestPacket.getPort());
+            targetConn.connect(new InternetAddress(requestPacket.getHost(), requestPacket.getPort()));
 
             responsePacket.addressType = AddressType.IPV4;
             responsePacket.setBindAddress(
-                targetConn.localAddress.sockAddrInet4.sin_addr.s_addr,
+                targetConn.localAddress.addr,
                 targetConn.localAddress.port
             );
 
             send(responsePacket);
 
             return true;
-        }
-
-        protected void pipe(ref TCPConnection src, ref TCPConnection dst)
-        {
-            size_t chunk;
-
-            try {
-                while (src.waitForData()) {
-                    chunk = src.peek().length;
-                    debug logger.debugV("Read src chunk %d", chunk);
-                    dst.write(src.peek());
-                    src.skip(chunk);
-                }
-            } catch (Exception e) {
-                logger.error("[%d] Client closed connection", id);
-            }
         }
 }

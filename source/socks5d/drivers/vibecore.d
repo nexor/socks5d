@@ -4,6 +4,7 @@ import socks5d.factory;
 import socks5d.driver;
 import socks5d.server;
 import vibe.core.core;
+import vibe.core.net;
 import std.socket;
 import std.variant;
 import std.container.array;
@@ -88,6 +89,7 @@ class VibeCoreConnection : Connection
 
     bool connect(InternetAddress address)
     {
+        //connectTCP(requestPacket.getHost(), requestPacket.getPort()); 
         socket = new TcpSocket;
         socket.connect(address);
 
@@ -219,6 +221,8 @@ class VibeCoreConnectionListener : ConnectionListener
     protected:
         TcpSocket bindSocket(string address, ushort port, uint backlog)
         {
+            // listenTCP(item.port, &handleConnection, item.host);
+            
             auto socket = new TcpSocket;
             assert(socket.isAlive);
             socket.bind(new InternetAddress(address, port));
@@ -243,6 +247,22 @@ class VibeCoreConnectionListener : ConnectionListener
                 callback(conn);
             }).start();
         }
+/*
+        nothrow
+        void handleConnection(TCPConnection conn)
+        {
+            import core.atomic : atomicOp;
+
+            try {
+                atomicOp!"+="(clientCounter, 1);
+                auto client = new Client(conn, clientCounter, this);
+
+                client.run();
+            } catch (Exception e) {
+                scope (failure) assert(false);
+                logger.error("Connection error: %s", e.msg);
+            }
+        } */
 }
 
 final class VibeCoreLogger : Logger

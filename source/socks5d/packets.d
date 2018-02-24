@@ -5,7 +5,6 @@ import std.conv;
 import std.traits;
 import socks5d.driver;
 import socks5d.factory : logger;
-import vibe.core.stream;
 
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
@@ -117,10 +116,9 @@ mixin template Socks5IncomingPacket()
     mixin Socks5Packet;
 
     @safe
-    void receiveVersion(InputStream)(InputStream conn, ubyte requiredVersion = 0x05)
-        if (isInputStream!InputStream)
+    void receiveVersion(Connection conn, ubyte requiredVersion = 0x05)
     {
-        conn.read(ver);
+        conn.receive(ver);
 
         debug logger.trace("[%d] Received version: %d", connID, ver[0]);
 
@@ -130,15 +128,14 @@ mixin template Socks5IncomingPacket()
     }
 
     @safe
-    void receiveBuffer(InputStream)(InputStream conn, ref ubyte[1] len, ref ubyte[] buf)
-        if (isInputStream!InputStream)
+    void receiveBuffer(Connection conn, ref ubyte[1] len, ref ubyte[] buf)
     {
-        conn.read(len);
+        conn.receive(len);
 
         debug logger.trace("[%d] Received buffer length: %d", connID, len[0]);
 
         buf = new ubyte[len[0]];
-        conn.read(buf);
+        conn.receive(buf);
     }
 }
 
@@ -161,8 +158,7 @@ struct MethodIdentificationPacket
     ubyte[1] nmethods;
     ubyte[]  methods;
 
-    void receive(InputStream)(InputStream conn)
-        if (isInputStream!InputStream)
+    void receive(Connection conn)
     {
         receiveVersion(conn);
         receiveBuffer(conn, nmethods, methods);
@@ -217,11 +213,10 @@ struct MethodSelectionPacket
 
     ubyte[1] method;
 
-    void send(OutputStream)(OutputStream conn)
-        if (isOutputStream!OutputStream)
+    void send(Connection conn)
     {
-        conn.write(ver);
-        conn.write(method);
+        conn.send(ver);
+        conn.send(method);
     }
 
     AuthMethod getMethod()
@@ -245,8 +240,7 @@ struct AuthPacket
     ubyte[1]  plen;
     ubyte[]   passwd;
 
-    void receive(InputStream)(InputStream conn)
-        if (isInputStream!InputStream)
+    void receive(Connection conn)
     {
         receiveVersion(conn, 0x01);
         receiveBuffer(conn, ulen, uname);
@@ -296,11 +290,10 @@ struct AuthStatusPacket
 
     private ubyte[1] status = [0x00];
 
-    void send(OutputStream)(OutputStream conn)
-        if (isOutputStream!OutputStream)
+    void send(Connection conn)
     {
-        conn.write(ver);
-        conn.write(status);
+        conn.send(ver);
+        conn.send(status);
     }
 
     AuthStatus getStatus()
@@ -328,12 +321,11 @@ struct RequestPacket
     private string host;
 
     // fill structure with data from socket
-    void receive(InputStream)(InputStream conn)
-        if (isInputStream!InputStream)
+    void receive(Connection conn)
     {
         receiveVersion(conn);
         readRequestCommand(conn);
-        conn.read(rsv);
+        conn.receive(rsv);
 
         debug logger.trace("[%d] Received rsv: %d", connID, rsv[0]);
 
@@ -354,10 +346,9 @@ struct RequestPacket
         return host;
     }
 
-    private void readRequestCommand(InputStream)(InputStream conn)
-        if (isInputStream!InputStream)
+    private void readRequestCommand(Connection conn)
     {
-        conn.read(cast(ubyte[1])cmd);
+        conn.receive(cast(ubyte[1])cmd);
 
         debug logger.trace("[%d] Received request command: %s", connID, cmd[0]);
 
@@ -368,20 +359,19 @@ struct RequestPacket
     }
 
     @trusted
-    private void readAddressAndPort(InputStream)(InputStream conn)
-        if (isInputStream!InputStream)
+    private void readAddressAndPort(Connection conn)
     {
-        import std.socket;
+        import std.socket : InternetAddress;
 
-        conn.read(cast(ubyte[1])atyp);
+        conn.receive(cast(ubyte[1])atyp);
 
         switch (atyp[0]) {
             case AddressType.IPV4:
                 debug logger.trace("[%d] Address type: IPV4", connID);
 
                 dstaddr = new ubyte[4];
-                conn.read(dstaddr);
-                conn.read(dstport);
+                conn.receive(dstaddr);
+                conn.receive(dstport);
 
                 host = InternetAddress.addrToString(dstaddr.read!uint);
                 break;
@@ -391,7 +381,7 @@ struct RequestPacket
 
                 ubyte[1] length;
                 receiveBuffer(conn, length, dstaddr);
-                conn.read(dstport);
+                conn.receive(dstport);
                 host = stringDstaddr();
 
                 logger.debugN("[%d] Request connect to %s", connID, host);
@@ -501,11 +491,10 @@ struct ResponsePacket
         fields.atyp = type;
     }
 
-    void send(OutputStream)(OutputStream conn)
-        if (isOutputStream!OutputStream)
+    void send(Connection conn)
     {
-        conn.write(ver);
-        conn.write(buffer);
+        conn.send(ver);
+        conn.send(buffer);
     }
 
     bool setBindAddress(uint ip4, ushort port)
