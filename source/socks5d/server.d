@@ -9,7 +9,6 @@ struct ListenItem
 {
     string host;
     ushort port;
-    uint   backlog = 10;
 }
 
 struct AuthItem
@@ -88,7 +87,7 @@ class Server
         nothrow @nogc
         bool authenticate(string login, string password)
         {
-            foreach(item; authItems) {
+            foreach (item; authItems) {
                 if (item.login == login && item.password == password) {
                     return true;
                 }

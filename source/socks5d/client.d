@@ -33,13 +33,10 @@ class Client
 
         final void run()
         {
-            logger.debugN("[%d] New client accepted: %s", id, conn.remoteAddress);
+            logger.diagnostic("[%d] New client accepted: %s", id, conn.remoteAddress);
 
             try {
-                if (authenticate()) {
-                    logger.debugN("[%d] Client successfully authenticated.", id);
-                } else {
-                    logger.warning("[%d] Client failed to authenticate.", id);
+                if (!authenticate()) {
                     conn.close();
 
                     return;
@@ -61,7 +58,7 @@ class Client
         void send(P)(ref P packet)
         if (isSocks5OutgoingPacket!P)
         {
-            logger.trace("[%d] <- %s", id, packet.printFields);
+            logger.debugV("[%d] <- %s", id, packet.printFields);
             packet.send(conn);
         }
 
@@ -69,9 +66,8 @@ class Client
         if (isSocks5IncomingPacket!P)
         {
             packet.receive(conn);
-            logger.trace("[%d] -> %s", id, packet.printFields);
+            logger.debugV("[%d] -> %s", id, packet.printFields);
         }
-
 
         bool authenticate()
         {
@@ -80,9 +76,10 @@ class Client
             };
             receive(identificationPacket);
 
-            MethodSelectionPacket packet2;
-
-            packet2.method = identificationPacket.detectAuthMethod(availableMethods);
+            MethodSelectionPacket packet2 = {
+                connID: id,
+                method: identificationPacket.detectAuthMethod(availableMethods)
+            };
 
             send(packet2);
 
@@ -118,10 +115,9 @@ class Client
 
         bool handshake()
         {
-            RequestPacket requestPacket = {
-                connID: id,
-            };
-            ResponsePacket packet4;
+            RequestPacket requestPacket = { connID: id };
+            ResponsePacket packet4 = { connID: id };
+
             InternetAddress targetAddress;
 
             try {

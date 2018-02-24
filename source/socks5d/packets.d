@@ -406,6 +406,8 @@ struct RequestPacket
     }
 }
 
+
+@safe
 struct ResponsePacket
 {
     mixin Socks5OutgoingPacket;
