@@ -13,6 +13,11 @@ enum AuthMethod : ubyte {
     NOTAVAILABLE = 0xFF
 }
 
+enum AuthStatus : ubyte {
+    YES = 0x00,
+    NO = 0x01,
+}
+
 enum RequestCmd : ubyte {
     CONNECT = 0x01,
     BIND = 0x02,
@@ -52,6 +57,9 @@ string printFields(T)(T args)
     }
     max += 1;
     foreach (index, value; values) {
+        if (T.tupleof[index].stringof == "connID") {
+            continue;
+        }
         result ~= format("%s=%s ", T.tupleof[index].stringof, value);
     }
 
@@ -59,6 +67,17 @@ string printFields(T)(T args)
 }
 
 class SocksException : Exception
+{
+    public:
+
+        this(string msg, string file = __FILE__,
+         size_t line = __LINE__, Throwable next = null) @safe pure nothrow
+        {
+            super(msg, file, line, next);
+        }
+}
+
+class AuthException : Exception
 {
     public:
 
@@ -82,9 +101,10 @@ class RequestException : SocksException
         }
 }
 
-abstract class Socks5Packet
+mixin template Socks5Packet()
 {
     ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
+    uint connID;    // connection ID
 
     ubyte getVersion()
     {
@@ -92,8 +112,9 @@ abstract class Socks5Packet
     }
 }
 
-abstract class IncomingPacket: Socks5Packet
+abstract class IncomingPacket
 {
+    mixin Socks5Packet;
     void receiveVersion(Connection conn, ubyte requiredVersion = 0x05)
     {
         conn.receive(ver);
@@ -112,8 +133,9 @@ abstract class IncomingPacket: Socks5Packet
     abstract void receive(Connection conn) {};
 }
 
-abstract class OutgoingPacket: Socks5Packet
+abstract class OutgoingPacket
 {
+    mixin Socks5Packet;
     abstract void send(Connection conn);
 }
 
