@@ -37,7 +37,7 @@ interface Connection
     bool connect(InternetAddress address);
 
     /// Close connection
-    nothrow @nogc
+    nothrow
     void close();
 
     /// perform bi-directional pipe

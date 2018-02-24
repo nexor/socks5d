@@ -46,136 +46,85 @@ class VibeCoreConnection : Connection
 {
     @safe:
 
-    private Socket socket;
-    private VibeCoreLogger logger;
+    private:
+        TCPConnection conn;
+        VibeCoreLogger logger;
 
-    this(Socket s = null, Logger logger = null)
-    {
-        if (s !is null) {
-            socket = s;
-        } else {
-            socket = new TcpSocket;
-        }
-        this.logger = cast(VibeCoreLogger)logger;
-    }
-
-    @trusted
-    void setupConnection(Variant driverConn)
-    {
-        socket = driverConn.get!Socket;
-    }
-
-    @property
-    InternetAddress localAddress()
-    {
-        return cast(InternetAddress)socket.localAddress;
-    }
-
-    @property
-    InternetAddress remoteAddress()
-    {
-        return cast(InternetAddress)socket.remoteAddress;
-    }
-
-    ptrdiff_t send(const(void)[] buf)
-    {
-        return socket.send(buf);
-    }
-
-    ptrdiff_t receive(void[] buf)
-    {
-        return socket.receive(buf);
-    }
-
-    bool connect(InternetAddress address)
-    {
-        //connectTCP(requestPacket.getHost(), requestPacket.getPort()); 
-        socket = new TcpSocket;
-        socket.connect(address);
-
-        return socket.isAlive;
-    }
-
-    nothrow @nogc
-    void close()
-    {
-        socket.close();
-    }
-
-    void duplexPipe(Connection otherConnection, uint clientId)
-    in {
-        assert(is(otherConnection == VibeCoreConnection), "otherConnection must be an instance of VibeCoreConnection");
-    }
-    do {
-        auto sset = new SocketSet(2);
-        ubyte[1024*8] buffer;
-        ptrdiff_t     received;
-
-        auto clientSocket = this.socket;
-        auto targetSocket = (cast(VibeCoreConnection)otherConnection).socket;
-
-        debug {
-            int bytesToClient;
-            static int bytesToClientLogThreshold = 1024*128;
-            int bytesToTarget;
-            static int bytesToTargetLogThreshold = 1024*8;
-        }
-
-        for (;; sset.reset()) {
-            sset.add(clientSocket);
-            sset.add(targetSocket);
-
-            if (Socket.select(sset, null, null) <= 0) {
-                logger.info("[%d] End of data transfer", clientId);
-                break;
-            }
-
-            if (sset.isSet(clientSocket)) {
-                received = clientSocket.receive(buffer);
-                if (received == Socket.ERROR) {
-                    logger.warning("[%d] Connection error on clientSocket.", clientId);
-                    break;
-                } else if (received == 0) {
-                    logger.info("[%d] Client connection closed.", clientId);
-                    break;
-                }
-
-                targetSocket.send(buffer[0..received]);
-
-                debug {
-                    bytesToTarget += received;
-                    if (bytesToTarget >= bytesToTargetLogThreshold) {
-                        logger.trace("[%d] <- %d bytes sent to target", clientId, bytesToTarget);
-                        bytesToTarget -= bytesToTargetLogThreshold;
-                    }
-                }
-            }
-
-            if (sset.isSet(targetSocket)) {
-                received = targetSocket.receive(buffer);
-                if (received == Socket.ERROR) {
-                    logger.warning("[%d] Connection error on targetSocket.", clientId);
-                    break;
-                } else if (received == 0) {
-                    logger.info("[%d] Target connection closed.", clientId);
-                    break;
-                }
-
-                clientSocket.send(buffer[0..received]);
-
-                debug {
-                    bytesToClient += received;
-                    if (bytesToClient >= bytesToClientLogThreshold) {
-                        logger.trace("[%d] <- %d bytes sent to client", clientId, bytesToClient);
-                        bytesToClient -= bytesToClientLogThreshold;
-                    }
-                }
+    public:
+        this(string unusedTmp = null, Logger logger = null)
+        {
+            if (logger !is null) {
+                this.logger = cast(VibeCoreLogger)logger;
             }
         }
 
-        clientSocket.close();
-        targetSocket.close();
-    }
+        @property
+        InternetAddress localAddress()
+        {
+            return new InternetAddress(conn.localAddress.toAddressString, conn.localAddress.port);
+        }
+
+        @property
+        InternetAddress remoteAddress()
+        {
+            return new InternetAddress(conn.remoteAddress.toAddressString, conn.remoteAddress.port);
+        }
+
+        @trusted
+        ptrdiff_t send(const(void)[] buf)
+        {
+            conn.write(cast(ubyte[])buf);
+            return buf.length;
+        }
+
+        @trusted
+        ptrdiff_t receive(void[] buf)
+        {
+            conn.read(cast(ubyte[])buf);
+
+            return buf.length;
+        }
+
+        bool connect(InternetAddress address)
+        {
+            conn = connectTCP(address.addrToString(address.addr), address.port);
+
+            return conn.connected;
+        }
+
+        nothrow
+        void close()
+        {
+            conn.close();
+        }
+
+        void duplexPipe(Connection otherConnection, uint clientId)
+        in {
+            assert(is(otherConnection == VibeCoreConnection), "otherConnection must be an instance of VibeCoreConnection");
+        }
+        do {
+            auto task1 = runTask((){
+                pipe(this, cast(VibeCoreConnection)otherConnection, clientId);
+            });
+            pipe(cast(VibeCoreConnection)otherConnection, this, clientId);
+        }
+
+    protected:
+        void pipe(VibeCoreConnection src, VibeCoreConnection dst, uint clientId)
+        {
+            size_t chunk;
+
+            try {
+                while (src.conn.waitForData()) {
+                    chunk = src.conn.peek().length;
+                    debug logger.trace("Read src chunk %d", chunk);
+                    dst.conn.write(src.conn.peek());
+                    src.conn.skip(chunk);
+                }
+            } catch (Exception e) {
+                logger.error("[%d] Client closed connection", clientId);
+            }
+        }
 }
 
 import core.thread : Thread;
@@ -187,10 +136,10 @@ class VibeCoreConnectionListener : ConnectionListener
     @safe:
 
     private:
-        TcpSocket socket;
-        uint      backlog = 10;
+        TCPListener listener;
         bool      isListening = false;
         VibeCoreLogger    logger;
+        ConnectionCallback callback;
 
     public:
         this(VibeCoreLogger logger = null)
@@ -202,67 +151,30 @@ class VibeCoreConnectionListener : ConnectionListener
         @trusted
         void listen(string address, ushort port, ConnectionCallback callback)
         {
-            socket = bindSocket(address, port, backlog);
+            this.callback = callback;
+            listener = listenTCP(port, &acceptClient, address);
             isListening = true;
-
-            while(true) {
-                acceptClient(socket, callback);
-            }
         }
 
         void stopListening()
         {
             if (isListening) {
-                socket.close();
+                listener.stopListening();
                 isListening = false;
             }
         }
 
     protected:
-        TcpSocket bindSocket(string address, ushort port, uint backlog)
-        {
-            // listenTCP(item.port, &handleConnection, item.host);
-            
-            auto socket = new TcpSocket;
-            assert(socket.isAlive);
-            socket.bind(new InternetAddress(address, port));
-            socket.listen(backlog);
-
-            logger.debugN("Listening on %s", socket.localAddress);
-
-            return socket;
-        }
-
         @trusted
-        void acceptClient(Socket socket, ConnectionCallback callback)
+        void acceptClient(TCPConnection vibeConn)
         {
-            auto clientSocket = socket.accept();
-            assert(clientSocket.isAlive);
-            assert(socket.isAlive);
-            auto conn = f.connection(cast(Variant)clientSocket);
+            auto conn = cast(VibeCoreConnection)f.connection();
+            conn.conn = vibeConn;
 
-            logger.debugV("Accepted connection %s", socket.localAddress);
+            logger.debugV("Accepted connection %s", conn.localAddress);
 
-            new Thread({
-                callback(conn);
-            }).start();
+            callback(conn);
         }
-/*
-        nothrow
-        void handleConnection(TCPConnection conn)
-        {
-            import core.atomic : atomicOp;
-
-            try {
-                atomicOp!"+="(clientCounter, 1);
-                auto client = new Client(conn, clientCounter, this);
-
-                client.run();
-            } catch (Exception e) {
-                scope (failure) assert(false);
-                logger.error("Connection error: %s", e.msg);
-            }
-        } */
 }
 
 final class VibeCoreLogger : Logger
