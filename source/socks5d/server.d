@@ -100,14 +100,13 @@ class Server
         }
 
     protected:
-        nothrow
         void onClient(Connection conn)
         {
             import core.atomic : atomicOp;
 
             atomicOp!"+="(clientCounter, 1);
             logger.debugN("Git client %d", clientCounter);
-            
+
             try {
                 auto client = new Client(conn, clientCounter, this);
                 client.run();
