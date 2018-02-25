@@ -28,5 +28,7 @@ configuration "vibe-core" {
 
 configuration "unittest" {
 	versions   "Socks5dDefaultDriver"
+
 	excludedSourceFiles "source/app.d"
+	sourceFiles "source/socks5d/drivers/standard.d"
 }

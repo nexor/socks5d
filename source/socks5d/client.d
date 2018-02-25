@@ -7,20 +7,20 @@ import socks5d.server;
 
 class Client
 {
-    enum BUFSIZE = 1024*8;
+    import std.socket : InternetAddress;
 
     protected:
-        uint     id;
+        uint         id;
+        Connection   conn;
+        Connection   targetConn;
 
-        Connection conn;
-        Connection targetConn;
-
-        Server        server;
-        AuthMethod[]  availableMethods = [ AuthMethod.NOAUTH ];
+        Server       server;
+        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
 
     public:
         this(Connection conn, uint id, Server server)
         {
+
             this.id = id;
             this.server = server;
             this.conn = conn;
@@ -33,29 +33,19 @@ class Client
 
         final void run()
         {
-            logger.diagnostic("[%d] New client accepted: %s", id, conn.remoteAddress().toString());
+            logger.diagnostic("[%d] New client accepted: %s", id, conn.remoteAddress);
 
             try {
-                if (!authenticate()) {
-                    conn.close();
-
-                    return;
-                }
-
-                if (handshake()) {
-                    logger.debugN("[%d] Handshake OK", id);
-
+                if (authenticate() && handshake()) {
                     conn.duplexPipe(targetConn, id);
-                } else {
-                    logger.debugN("[%d] Handshake error", id);
-                    conn.close();
                 }
 
             } catch (SocksException e) {
-                logger.error("[%d] Error: %s", id, e.msg);
-                conn.close();
+                logger.error("Error: %s", e.msg);
             }
 
+            targetConn.close();
+            conn.close();
             logger.debugN("[%d] End of session", id);
         }
 

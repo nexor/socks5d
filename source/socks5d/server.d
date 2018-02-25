@@ -17,13 +17,14 @@ struct AuthItem
     string password;
 }
 
-nothrow
 class Server
 {
     private:
         string address;
         ushort port;
-        shared static uint clientCounter = 0;
+
+        Array!Client clients;
+        static shared uint clientCounter = 0;
 
         Array!ListenItem listenItems;
         Array!AuthItem   authItems;

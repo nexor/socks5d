@@ -120,7 +120,7 @@ mixin template Socks5IncomingPacket()
     {
         conn.receive(ver);
 
-        debug logger.trace("[%d] Received version: %d", connID, ver[0]);
+        logger.trace("[%d] Received version: %d", connID, ver[0]);
 
         if (ver[0] != requiredVersion) {
             throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
@@ -132,7 +132,7 @@ mixin template Socks5IncomingPacket()
     {
         conn.receive(len);
 
-        debug logger.trace("[%d] Received buffer length: %d", connID, len[0]);
+        logger.trace("[%d] Received buffer length: %d", connID, len[0]);
 
         buf = new ubyte[len[0]];
         conn.receive(buf);
@@ -150,7 +150,6 @@ enum bool isSocks5IncomingPacket(P) =
 enum bool isSocks5OutgoingPacket(P) =
     hasMember!(P, "send");
 
-@safe
 struct MethodIdentificationPacket
 {
     mixin Socks5IncomingPacket;
@@ -206,13 +205,13 @@ struct MethodIdentificationPacket
     }
 }
 
-@safe
 struct MethodSelectionPacket
 {
     mixin Socks5OutgoingPacket;
 
     ubyte[1] method;
 
+    @trusted
     void send(Connection conn)
     {
         conn.send(ver);
@@ -230,7 +229,6 @@ struct MethodSelectionPacket
     }
 }
 
-@safe
 struct AuthPacket
 {
     mixin Socks5IncomingPacket;
@@ -247,13 +245,13 @@ struct AuthPacket
         receiveBuffer(conn, plen, passwd);
     }
 
-    @property @trusted
+    @property
     string login()
     {
         return cast(string)uname;
     }
 
-    @property @trusted
+    @property
     string password()
     {
         return cast(string)passwd;
@@ -283,13 +281,13 @@ struct AuthPacket
     }
 }
 
-@safe
 struct AuthStatusPacket
 {
     mixin Socks5OutgoingPacket;
 
     private ubyte[1] status = [0x00];
 
+    @trusted
     void send(Connection conn)
     {
         conn.send(ver);
@@ -307,10 +305,11 @@ struct AuthStatusPacket
     }
 }
 
-@safe
 struct RequestPacket
 {
     mixin Socks5IncomingPacket;
+
+    import std.socket : InternetAddress;
 
     RequestCmd[1]  cmd;
     ubyte[1]       rsv;
@@ -326,8 +325,6 @@ struct RequestPacket
         receiveVersion(conn);
         readRequestCommand(conn);
         conn.receive(rsv);
-
-        debug logger.trace("[%d] Received rsv: %d", connID, rsv[0]);
 
         if (rsv[0] != 0x00) {
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
