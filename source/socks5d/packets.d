@@ -6,8 +6,6 @@ import std.traits;
 import socks5d.driver;
 import socks5d.factory : logger;
 
-@safe:
-
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
     AUTH = 0x02,
@@ -211,13 +209,23 @@ struct MethodSelectionPacket
 {
     mixin Socks5OutgoingPacket;
 
-    ubyte method;
+    ubyte[1] method;
 
     @trusted
     void send(Connection conn)
     {
         conn.send(ver);
-        conn.send((&method)[0..1]);
+        conn.send(method);
+    }
+
+    AuthMethod getMethod()
+    {
+        return cast(AuthMethod)method[0];
+    }
+
+    void setMethod(AuthMethod method)
+    {
+        this.method[0] = method;
     }
 }
 
@@ -240,13 +248,13 @@ struct AuthPacket
     @property
     string login()
     {
-        return (cast(const char[])uname).to!string;
+        return cast(string)uname;
     }
 
     @property
     string password()
     {
-        return (cast(const char[])passwd).to!string;
+        return cast(string)passwd;
     }
 
     unittest
@@ -277,13 +285,23 @@ struct AuthStatusPacket
 {
     mixin Socks5OutgoingPacket;
 
-    ubyte status = 0x00;
+    private ubyte[1] status = [0x00];
 
     @trusted
     void send(Connection conn)
     {
         conn.send(ver);
-        conn.send((&status)[0..1]);
+        conn.send(status);
+    }
+
+    AuthStatus getStatus()
+    {
+        return cast(AuthStatus)status[0];
+    }
+
+    void setStatus(AuthStatus status)
+    {
+        this.status[0] = status;
     }
 }
 
@@ -299,7 +317,7 @@ struct RequestPacket
     ubyte[]        dstaddr;
     ubyte[2]       dstport;
 
-    private InternetAddress destinationAddress;
+    private string host;
 
     // fill structure with data from socket
     void receive(Connection conn)
@@ -307,52 +325,81 @@ struct RequestPacket
         receiveVersion(conn);
         readRequestCommand(conn);
         conn.receive(rsv);
+
         if (rsv[0] != 0x00) {
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
         }
 
-        destinationAddress = readAddressAndPort(conn);
+        readAddressAndPort(conn);
     }
 
-    InternetAddress getDestinationAddress()
+    ushort getPort()
     {
-        return destinationAddress;
+        return dstport.bigEndianToNative!ushort;
+    }
+
+    string getHost()
+    {
+        return host;
     }
 
     private void readRequestCommand(Connection conn)
     {
-        conn.receive(cmd);
+        conn.receive(cast(ubyte[1])cmd);
+
+        debug logger.trace("[%d] Received request command: %s", connID, cmd[0]);
+
         if (cmd[0] != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
                 "Only CONNECT method is supported, given " ~ cmd[0].to!string);
         }
     }
 
-    private InternetAddress readAddressAndPort(Connection conn)
+    @trusted
+    private void readAddressAndPort(Connection conn)
     {
-        conn.receive(atyp);
+        import std.socket : InternetAddress;
+
+        conn.receive(cast(ubyte[1])atyp);
 
         switch (atyp[0]) {
             case AddressType.IPV4:
+                debug logger.trace("[%d] Address type: IPV4", connID);
+
                 dstaddr = new ubyte[4];
                 conn.receive(dstaddr);
                 conn.receive(dstport);
 
-                return new InternetAddress(dstaddr.read!uint, dstport.bigEndianToNative!ushort);
+                host = InternetAddress.addrToString(dstaddr.read!uint);
+                break;
 
             case AddressType.DOMAIN:
+                debug logger.trace("[%d] Adress type: DOMAIN", connID);
+
                 ubyte[1] length;
                 receiveBuffer(conn, length, dstaddr);
                 conn.receive(dstport);
+                host = stringDstaddr();
 
-                return new InternetAddress(cast(char[])dstaddr, dstport.bigEndianToNative!ushort);
+                logger.debugN("[%d] Request connect to %s", connID, host);
+                break;
 
             case AddressType.IPV6:
+                debug logger.trace("[%d] Address type: IPV6", connID);
+
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "AddressType=ipv6 is not supported");
 
             default:
+                debug logger.trace("[%d] Address type: UNKNOWN", connID);
+
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp[0]);
         }
+    }
+
+    @trusted
+    private string stringDstaddr()
+    {
+        return cast(string)dstaddr;
     }
 
     /// test IPv4 address type
@@ -412,27 +459,51 @@ struct ResponsePacket
 {
     mixin Socks5OutgoingPacket;
 
-    ReplyCode   rep = ReplyCode.SUCCEEDED;
-    ubyte[1]    rsv = [0x00];
-    AddressType atyp;
-    ubyte[4]    bndaddr;
-    ubyte[2]    bndport;
+    private struct ResponsePacketFields
+    {
+        align(1):
 
-    @trusted
+        ReplyCode   rep = ReplyCode.SUCCEEDED;
+        ubyte       rsv = 0x00;
+        AddressType atyp;
+        uint        bndaddr;
+        ushort      bndport;
+    }
+
+    private union
+    {
+        ResponsePacketFields fields;
+        ubyte[fields.sizeof] buffer;
+    }
+
+    @property
+    void replyCode(ReplyCode code)
+    {
+        fields.rep = code;
+    }
+
+    @property
+    void addressType(AddressType type)
+    {
+        fields.atyp = type;
+    }
+
     void send(Connection conn)
     {
         conn.send(ver);
-        conn.send((&rep)[0..1]);
-        conn.send(rsv);
-        conn.send((&atyp)[0..1]);
-        conn.send(bndaddr);
-        conn.send(bndport);
+        conn.send(buffer);
     }
 
-    bool setBindAddress(uint address, ushort port)
+    bool setBindAddress(uint ip4, ushort port)
     {
-        bndport = nativeToBigEndian(port);
-        bndaddr = nativeToBigEndian(address);
+        fields.bndaddr = ip4;
+        fields.bndport = port;
+
+        debug {
+            import std.socket;
+            auto address = new InternetAddress(ip4, port);
+            logger.trace("[%d] Local target address: %s", connID, address.toAddrString());
+        }
 
         return true;
     }

@@ -7,8 +7,6 @@ import socks5d.server;
 
 class Client
 {
-    import std.socket : InternetAddress;
-
     protected:
         uint         id;
         Connection   conn;
@@ -46,13 +44,14 @@ class Client
 
             targetConn.close();
             conn.close();
+            logger.debugN("[%d] End of session", id);
         }
 
     protected:
         void send(P)(ref P packet)
         if (isSocks5OutgoingPacket!P)
         {
-            logger.debugV("[%d] <- %s", id, packet.printFields);
+            logger.debugV("[%d] send: %s", id, packet.printFields);
             packet.send(conn);
         }
 
@@ -60,7 +59,7 @@ class Client
         if (isSocks5IncomingPacket!P)
         {
             packet.receive(conn);
-            logger.debugV("[%d] -> %s", id, packet.printFields);
+            logger.debugV("[%d] recv: %s", id, packet.printFields);
         }
 
         bool authenticate()
@@ -77,28 +76,28 @@ class Client
 
             send(packet2);
 
-            if (packet2.method == AuthMethod.NOTAVAILABLE) {
+            if (packet2.getMethod() == AuthMethod.NOTAVAILABLE) {
+                logger.diagnostic("[%d] No available method to authenticate.", id);
                 return false;
             }
 
-            if (packet2.method == AuthMethod.AUTH) {
-                AuthPacket authPacket = {
-                    connID : id,
-                };
-                AuthStatusPacket authStatus;
+            if (packet2.getMethod() == AuthMethod.AUTH) {
+                AuthPacket authPacket;
+                AuthStatusPacket authStatusPacket;
 
                 receive(authPacket);
-                logger.trace("[%d] Client auth with credentials: %s:%s", id, authPacket.login, authPacket.password);
+                logger.debugV("[%d] Client auth with credentials: %s:***", id, authPacket.login);
 
                 if (server.authenticate(authPacket.login, authPacket.password)) {
-                    authStatus.status = 0x00;
-                    logger.trace("[%d] <- %s", id, authStatus.printFields);
-                    send(authStatus);
+                    authStatusPacket.setStatus(AuthStatus.YES);
+                    send(authStatusPacket);
+                    logger.diagnostic("[%d] Client successfully authenticated.", id);
 
                     return true;
                 } else {
-                    authStatus.status = 0x01;
-                    send(authStatus);
+                    authStatusPacket.setStatus(AuthStatus.NO);
+                    send(authStatusPacket);
+                    logger.diagnostic("[%d] Client failed to authenticate.", id);
 
                     return false;
                 }
@@ -110,38 +109,29 @@ class Client
         bool handshake()
         {
             RequestPacket requestPacket = { connID: id };
-            ResponsePacket packet4 = { connID: id };
-
-            InternetAddress targetAddress;
+            ResponsePacket responsePacket = { connID: id };
 
             try {
                 receive(requestPacket);
             } catch (RequestException e) {
-                logger.error("Error: %s", e.msg);
-                packet4.rep = e.replyCode;
-                send(packet4);
+                logger.warning("[%d] Error: %s", id, e.msg);
+                responsePacket.replyCode = e.replyCode;
+                send(responsePacket);
 
                 return false;
             }
 
-            connectToTarget(requestPacket.getDestinationAddress());
+            logger.debugV("[%d] Connecting to %s:%d", id, requestPacket.getHost(), requestPacket.getPort());
+            targetConn.connect(new InternetAddress(requestPacket.getHost(), requestPacket.getPort()));
 
-            packet4.atyp = AddressType.IPV4;
-            packet4.setBindAddress(
+            responsePacket.addressType = AddressType.IPV4;
+            responsePacket.setBindAddress(
                 targetConn.localAddress.addr,
                 targetConn.localAddress.port
             );
 
-            logger.trace("[%d] Local target address: %s", id, targetConn.localAddress);
-            send(packet4);
+            send(responsePacket);
 
             return true;
-        }
-
-        bool connectToTarget(InternetAddress address)
-        body {
-            logger.trace("[%d] Connecting to target %s", id, address.toString());
-
-            return targetConn.connect(address);
         }
 }

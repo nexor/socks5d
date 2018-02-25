@@ -5,6 +5,7 @@ import socks5d.driver;
 import socks5d.server;
 import std.socket;
 import std.container.array;
+import core.thread : Thread;
 
 /** Connection implementation.
 */
@@ -134,8 +135,6 @@ class StandardConnection : Connection
     }
 }
 
-import core.thread : Thread;
-
 final class StandardApplication : Application
 {
     protected:
@@ -189,12 +188,14 @@ class StandardConnectionListener : ConnectionListener
         @trusted
         void listen(string address, ushort port, ConnectionCallback callback)
         {
-            socket = bindSocket(address, port, backlog);
-            isListening = true;
+            new Thread({
+                socket = bindSocket(address, port, backlog);
+                isListening = true;
 
-            while(true) {
-                acceptClient(socket, callback);
-            }
+                while(true) {
+                    acceptClient(socket, callback);
+                }
+            }).start();
         }
 
         void stopListening()

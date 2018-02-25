@@ -24,7 +24,7 @@ class Server
         ushort port;
 
         Array!Client clients;
-        uint clientCounter = 0;
+        static shared uint clientCounter = 0;
 
         Array!ListenItem listenItems;
         Array!AuthItem   authItems;
@@ -41,14 +41,10 @@ class Server
 
         final void run()
         {
-            import core.thread : Thread;
-
             foreach (item; listenItems) {
-                new Thread({
-                    auto listener =  f.connectionListener();
-                    logger.info("Listening on %s:%d", item.host, item.port);
-                    listener.listen(item.host, item.port, &onClient);
-                }).start();
+                auto listener = f.connectionListener();
+                logger.info("Listening on %s:%d", item.host, item.port);
+                listener.listen(item.host, item.port, &onClient);
             }
         }
 
@@ -107,9 +103,17 @@ class Server
     protected:
         void onClient(Connection conn)
         {
-            clientCounter++;
-            logger.debugN("Got client %d", clientCounter);
-            auto client = new Client(conn, clientCounter, this);
-            client.run();
+            import core.atomic : atomicOp;
+
+            atomicOp!"+="(clientCounter, 1);
+            logger.debugN("Git client %d", clientCounter);
+
+            try {
+                auto client = new Client(conn, clientCounter, this);
+                client.run();
+            } catch (Exception e) {
+                scope (failure) assert(false);
+                logger.error("Connection error: %s", e.msg);
+            }
         }
 }
