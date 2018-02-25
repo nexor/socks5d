@@ -113,6 +113,7 @@ class Server
                 client.run();
             } catch (Exception e) {
                 scope (failure) assert(false);
+                conn.close();
                 logger.error("Connection error: %s", e.msg);
                 debug logger.error("%s", e.info);
             }
