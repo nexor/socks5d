@@ -131,9 +131,6 @@ class StandardConnection : Connection
                 }
             }
         }
-
-        clientSocket.close();
-        targetSocket.close();
     }
 }
 

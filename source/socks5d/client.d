@@ -36,22 +36,16 @@ class Client
             logger.diagnostic("[%d] New client accepted: %s", id, conn.remoteAddress);
 
             try {
-                if (!authenticate()) {
-                    conn.close();
-
-                    return;
-                }
-
-                if (handshake) {
+                if (authenticate() && handshake()) {
                     conn.duplexPipe(targetConn, id);
-                } else {
-                    conn.close();
                 }
 
             } catch (SocksException e) {
                 logger.error("Error: %s", e.msg);
-                conn.close();
             }
+
+            targetConn.close();
+            conn.close();
         }
 
     protected:
@@ -146,7 +140,6 @@ class Client
 
         bool connectToTarget(InternetAddress address)
         body {
-            targetConn.connect(address);
             logger.trace("[%d] Connecting to target %s", id, address.toString());
 
             return targetConn.connect(address);
