@@ -67,24 +67,18 @@ string printFields(T)(T args)
 
 class SocksException : Exception
 {
-    public:
+    import std.exception;
 
-        this(string msg, string file = __FILE__,
-         size_t line = __LINE__, Throwable next = null) @safe pure nothrow
-        {
-            super(msg, file, line, next);
-        }
+    ///
+    mixin basicExceptionCtors;
 }
 
 class AuthException : Exception
 {
-    public:
+    import std.exception;
 
-        this(string msg, string file = __FILE__,
-         size_t line = __LINE__, Throwable next = null) @safe pure nothrow
-        {
-            super(msg, file, line, next);
-        }
+    ///
+    mixin basicExceptionCtors;
 }
 
 class RequestException : SocksException
