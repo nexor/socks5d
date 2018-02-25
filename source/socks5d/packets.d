@@ -424,10 +424,11 @@ struct RequestPacket
         packet.receive(conn);
 
         assert(packet.getVersion() == 5);
-        assert(packet.getDestinationAddress().toString() == "10.0.35.94:80");
+        assert(packet.getHost() == "10.0.35.94");
+        assert(packet.getPort() == 80);
     }
 
-    /// test domain address type
+    /// test domain address type - do not resolve host name
     unittest
     {
         import std.socket;
@@ -441,7 +442,7 @@ struct RequestPacket
             0x01,
             0x00,
             AddressType.DOMAIN,
-            9, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
+            "localhost".length, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
             0x00, 0x50 // port 80
         ];
 
@@ -449,7 +450,8 @@ struct RequestPacket
         packet.receive(conn);
 
         assert(packet.getVersion() == 5);
-        assert(packet.getDestinationAddress().toString() == "127.0.0.1:80");
+        assert(packet.getHost() == "localhost");
+        assert(packet.getPort() == 80);
     }
 }
 
@@ -466,8 +468,8 @@ struct ResponsePacket
         ReplyCode   rep = ReplyCode.SUCCEEDED;
         ubyte       rsv = 0x00;
         AddressType atyp;
-        uint        bndaddr;
-        ushort      bndport;
+        ubyte[uint.sizeof]   bndaddr;
+        ubyte[ushort.sizeof] bndport;
     }
 
     private union
@@ -496,11 +498,11 @@ struct ResponsePacket
 
     bool setBindAddress(uint ip4, ushort port)
     {
-        fields.bndaddr = ip4;
-        fields.bndport = port;
+        fields.bndaddr = ip4.nativeToBigEndian();
+        fields.bndport = port.nativeToBigEndian();
 
         debug {
-            import std.socket;
+            import std.socket : InternetAddress;
             auto address = new InternetAddress(ip4, port);
             logger.trace("[%d] Local target address: %s", connID, address.toAddrString());
         }
