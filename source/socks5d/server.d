@@ -106,7 +106,7 @@ class Server
             import core.atomic : atomicOp;
 
             atomicOp!"+="(clientCounter, 1);
-            logger.debugN("Git client %d", clientCounter);
+            logger.debugN("Got client %d", clientCounter);
 
             try {
                 auto client = new Client(conn, clientCounter, this);
@@ -114,6 +114,7 @@ class Server
             } catch (Exception e) {
                 scope (failure) assert(false);
                 logger.error("Connection error: %s", e.msg);
+                debug logger.error("%s", e.info);
             }
         }
 }
