@@ -51,7 +51,7 @@ final class Factory
     */
     Connection connection()
     {
-        return new ConnectionImpl(null, logger);
+        return new ConnectionImpl(logger);
     }
 
     /**

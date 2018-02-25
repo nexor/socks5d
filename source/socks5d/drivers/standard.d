@@ -16,13 +16,8 @@ class StandardConnection : Connection
     private Socket socket;
     private StandardLogger logger;
 
-    this(Socket s = null, StandardLogger logger = null)
+    this(StandardLogger logger)
     {
-        if (s !is null) {
-            socket = s;
-        } else {
-            socket = new TcpSocket;
-        }
         this.logger = logger;
     }
 
@@ -59,6 +54,8 @@ class StandardConnection : Connection
     nothrow @nogc
     void close()
     {
+        assert(socket !is null);
+
         socket.close();
     }
 
