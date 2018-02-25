@@ -7,8 +7,6 @@ import socks5d.server;
 
 class Client
 {
-    import std.socket : InternetAddress;
-
     protected:
         uint         id;
         Connection   conn;
