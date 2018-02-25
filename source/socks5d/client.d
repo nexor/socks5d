@@ -30,6 +30,7 @@ class Client
         final void run()
         {
             logger.diagnostic("[%d] New client accepted: %s", id, conn.remoteAddress);
+            scope (exit) conn.close();
 
             try {
                 if (authenticate()) {
@@ -43,7 +44,6 @@ class Client
                 logger.error("Error: %s", e.msg);
             }
 
-            conn.close();
             logger.debugN("[%d] End of session", id);
         }
 
