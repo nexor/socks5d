@@ -108,6 +108,8 @@ class Client
 
         bool handshake()
         {
+            import std.socket : InternetAddress;
+
             RequestPacket requestPacket = { connID: id };
             ResponsePacket responsePacket = { connID: id };
 
