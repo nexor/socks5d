@@ -21,6 +21,11 @@ class StandardConnection : Connection
         this.logger = logger;
     }
 
+    this(Socket socket)
+    {
+        this.socket = socket;
+    }
+
     @property
     InternetAddress localAddress()
     {
