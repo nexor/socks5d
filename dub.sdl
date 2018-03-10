@@ -4,7 +4,7 @@ authors     "Pavel Chebotarev"
 
 license "MIT"
 
-dependency "sdlang-d" version="~master"
+dependency "sdlang-d" version="~>0.10.2"
 
 excludedSourceFiles "source/socks5d/drivers/*.d"
 
@@ -19,7 +19,7 @@ configuration "vibe-core" {
 	versions   "Socks5dVibeCoreDriver"
 	versions   "VibeDisableCommandLineParsing"
 
-	dependency "vibe-core" version="~>1.3.0"
+	dependency "vibe-core" version="~>1.4.0"
 
 	targetType "executable"
 
