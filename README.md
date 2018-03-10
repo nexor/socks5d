@@ -7,26 +7,28 @@ Project is under heavy development.
 
 ## Implemented features
 
-### Authentication methods
+Implemented authentication methods: No authentication, Username/password
 
-Method            | Implemented
-------------------|------------
-No authentication | +
-GSS-API           |
-Username/password | +
+TBD: GSS-API
 
-### Connect commands
+Implemented connect commands: CONNECT
 
-Command       | Implemented
---------------|--------------
-CONNECT       | +
-BIND          |
-UDP ASSOCIATE |
+TBD: BIND, UDP ASSOCIATE
 
-### Addressing
+Implemented addressing types: IP v4 address, DOMAINNAME.
 
-Address type  | Implemented
---------------|--------------
-IP V4 address | +
-DOMAINNAME    | +
-IP V6 address |
+TBD: IP v6 address
+
+## Building
+
+Socks5d is written using D language and dub package manager.
+
+Compiling the application in debug mode:
+```
+dub build
+```
+
+Compiling the application in release mode:
+```
+dub build -b release
+```
