@@ -7,6 +7,23 @@ import std.socket;
 import std.container.array;
 import core.thread : Thread;
 
+debug {
+    extern(C) int pthread_setname_np(pthread_t, const char*);
+
+    int setCurrentThreadName(string name)
+    {
+        import core.sys.posix.pthread;
+        import std.string;
+
+        int result = pthread_setname_np(pthread_self(), name.toStringz());
+        if (result != 0) {
+            logger.error("Can't set thread name, error %d", result);
+        }
+
+        return result;
+    }
+}
+
 /** Connection implementation.
 */
 class StandardConnection : Connection
@@ -190,7 +207,11 @@ class StandardConnectionListener : ConnectionListener
         @trusted
         void listen(string address, ushort port, ConnectionCallback callback)
         {
+            import std.conv;
+
             new Thread({
+                debug setCurrentThreadName(address ~ ":" ~ port.to!string);
+
                 socket = bindSocket(address, port, backlog);
                 isListening = true;
 
@@ -233,6 +254,7 @@ class StandardConnectionListener : ConnectionListener
             logger.debugV("Accepted connection %s", socket.localAddress);
 
             new Thread({
+                debug setCurrentThreadName("Client");
                 callback(conn);
             }).start();
         }
