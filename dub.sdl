@@ -4,7 +4,7 @@ authors     "Pavel Chebotarev"
 
 license "MIT"
 
-dependency "sdlang-d" version="~master"
+dependency "sdlang-d" version="~>0.10.2"
 
 excludedSourceFiles "source/socks5d/drivers/*.d"
 
