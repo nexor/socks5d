@@ -87,6 +87,7 @@ class StandardConnection : Connection
     }
     do {
         auto sset = new SocketSet(2);
+
         ubyte[1024*8] buffer;
         ptrdiff_t     received;
 
@@ -105,7 +106,7 @@ class StandardConnection : Connection
             sset.add(targetSocket);
 
             if (Socket.select(sset, null, null) <= 0) {
-                logger.info("[%d] End of data transfer", clientId);
+                logger.debugN("[%d] End of data transfer", clientId);
                 break;
             }
 
@@ -115,7 +116,7 @@ class StandardConnection : Connection
                     logger.warning("[%d] Connection error on clientSocket.", clientId);
                     break;
                 } else if (received == 0) {
-                    logger.info("[%d] Client connection closed.", clientId);
+                    logger.debugN("[%d] Client connection closed.", clientId);
                     break;
                 }
 
@@ -124,7 +125,7 @@ class StandardConnection : Connection
                 debug {
                     bytesToTarget += received;
                     if (bytesToTarget >= bytesToTargetLogThreshold) {
-                        logger.trace("[%d] <- %d bytes sent to target", clientId, bytesToTarget);
+                        logger.debugV("[%d] <- %d bytes sent to target", clientId, bytesToTarget);
                         bytesToTarget -= bytesToTargetLogThreshold;
                     }
                 }
@@ -136,7 +137,7 @@ class StandardConnection : Connection
                     logger.warning("[%d] Connection error on targetSocket.", clientId);
                     break;
                 } else if (received == 0) {
-                    logger.info("[%d] Target connection closed.", clientId);
+                    logger.debugN("[%d] Target connection closed.", clientId);
                     break;
                 }
 
@@ -145,7 +146,7 @@ class StandardConnection : Connection
                 debug {
                     bytesToClient += received;
                     if (bytesToClient >= bytesToClientLogThreshold) {
-                        logger.trace("[%d] <- %d bytes sent to client", clientId, bytesToClient);
+                        logger.debugV("[%d] <- %d bytes sent to client", clientId, bytesToClient);
                         bytesToClient -= bytesToClientLogThreshold;
                     }
                 }
@@ -234,6 +235,7 @@ class StandardConnectionListener : ConnectionListener
         {
             auto socket = new TcpSocket;
             assert(socket.isAlive);
+            socket.setOption(SocketOptionLevel.SOCKET, SocketOption.REUSEADDR, true);
             socket.bind(new InternetAddress(address, port));
             socket.listen(backlog);
 
@@ -272,7 +274,7 @@ final class StandardLogger : Logger
                 sharedLog.logLevel = LogLevel.info;
                 break;
             case 1:
-                sharedLog.logLevel = LogLevel.trace;
+                sharedLog.logLevel = LogLevel.info;
                 break;
             case 2:
                 sharedLog.logLevel = LogLevel.trace;
