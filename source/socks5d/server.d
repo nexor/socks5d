@@ -1,15 +1,14 @@
 module socks5d.server;
 
+import std.container.array;
 import socks5d.client;
-import std.socket;
-import std.experimental.logger;
-import core.thread : Thread;
+import socks5d.driver;
+import socks5d.factory : f, logger;
 
 struct ListenItem
 {
     string host;
     ushort port;
-    uint   backlog = 10;
 }
 
 struct AuthItem
@@ -24,13 +23,16 @@ class Server
         string address;
         ushort port;
 
-        Client[] clients;
-        uint clientCounter = 0;
+        Array!Client clients;
+        static shared uint clientCounter = 0;
 
-        ListenItem[] listenItems;
-        AuthItem[]   authItems;
+        Array!ListenItem listenItems;
+        Array!AuthItem   authItems;
 
     public:
+        uint id;
+
+        @nogc
         this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
         {
             this.listenItems = listenItems;
@@ -40,17 +42,19 @@ class Server
         final void run()
         {
             foreach (item; listenItems) {
-                new Thread({
-                    listen(item);
-                }).start();
+                auto listener = f.connectionListener();
+                logger.info("Listening on %s:%d", item.host, item.port);
+                listener.listen(item.host, item.port, &onClient);
             }
         }
 
+        @nogc
         void addListenItem(ListenItem item)
         {
             listenItems ~= item;
         }
 
+        @nogc
         void addListenItem(string host, ushort port)
         {
             ListenItem item = {
@@ -61,11 +65,13 @@ class Server
             listenItems ~= item;
         }
 
+        nothrow @nogc
         void addAuthItem(AuthItem item)
         {
             authItems ~= item;
         }
 
+        nothrow @nogc
         void addAuthItem(string login, string password)
         {
             AuthItem item = {
@@ -76,10 +82,10 @@ class Server
             authItems ~= item;
         }
 
-        nothrow
+        nothrow @nogc
         bool authenticate(string login, string password)
         {
-            foreach(item; authItems) {
+            foreach (item; authItems) {
                 if (item.login == login && item.password == password) {
                     return true;
                 }
@@ -88,44 +94,28 @@ class Server
             return false;
         }
 
+        pure nothrow @safe @nogc
         bool hasAuthItems()
         {
             return authItems.length > 0;
         }
 
     protected:
-        void listen(ListenItem listenItem)
+        void onClient(Connection conn)
         {
-            auto socket = bindSocket(listenItem.host, listenItem.port, listenItem.backlog);
+            import core.atomic : atomicOp;
 
-            while(true) {
-                acceptClient(socket);
-            }
-        }
+            atomicOp!"+="(clientCounter, 1);
+            logger.debugN("Got client %d", clientCounter);
 
-        TcpSocket bindSocket(string address, ushort port, uint backlog)
-        {
-            auto socket = new TcpSocket;
-            assert(socket.isAlive);
-            socket.bind(new InternetAddress(address, port));
-            socket.listen(backlog);
-
-            criticalf("Listening on %s", socket.localAddress().toString());
-
-            return socket;
-        }
-
-        void acceptClient(Socket socket)
-        {
-            auto clientSocket = socket.accept();
-            assert(clientSocket.isAlive);
-            assert(socket.isAlive);
-
-            clientCounter++;
-            new Thread({
-                auto client = new Client(clientSocket, clientCounter, this);
-                clients ~= client;
+            try {
+                auto client = new Client(conn, clientCounter, this);
                 client.run();
-            }).start();
+            } catch (Exception e) {
+                scope (failure) assert(false);
+                conn.close();
+                logger.error("Connection error: %s", e.msg);
+                debug logger.error("%s", e.info);
+            }
         }
 }
