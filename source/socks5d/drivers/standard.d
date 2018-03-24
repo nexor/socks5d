@@ -8,11 +8,13 @@ import std.container.array;
 import core.thread : Thread;
 
 debug {
+    import core.sys.posix.pthread;
+
     extern(C) int pthread_setname_np(pthread_t, const char*);
 
     int setCurrentThreadName(string name)
     {
-        import core.sys.posix.pthread;
+
         import std.string;
 
         int result = pthread_setname_np(pthread_self(), name.toStringz());
