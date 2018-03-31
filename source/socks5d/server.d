@@ -1,71 +1,121 @@
 module socks5d.server;
 
+import std.container.array;
 import socks5d.client;
-import std.socket;
-import std.experimental.logger;
+import socks5d.driver;
+import socks5d.factory : f, logger;
+
+struct ListenItem
+{
+    string host;
+    ushort port;
+}
+
+struct AuthItem
+{
+    string login;
+    string password;
+}
 
 class Server
 {
     private:
         string address;
         ushort port;
-        string authString;
-        int backlog;
-        Socket socket;
-        Client[] clients;
-        uint clientCounter = 0;
+
+        Array!Client clients;
+        static shared uint clientCounter = 0;
+
+        Array!ListenItem listenItems;
+        Array!AuthItem   authItems;
 
     public:
-        this(string address, ushort port = 1080, int backlog = 10)
-        {
-            this.address = address;
-            this.port = port;
-            this.backlog = backlog;
-        }
+        uint id;
 
-        void setAuthString(string authString)
+        @nogc
+        this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
         {
-            this.authString = authString;
-            if (authString.length > 1) {
-                warningf("Using authentication string: %s", authString);
-            }
+            this.listenItems = listenItems;
+            this.authItems = authItems;
         }
 
         final void run()
         {
-            bindSocket();
-
-            while (true) {
-                acceptClient();
+            foreach (item; listenItems) {
+                auto listener = f.connectionListener();
+                logger.info("Listening on %s:%d", item.host, item.port);
+                listener.listen(item.host, item.port, &onClient);
             }
         }
 
-    protected:
-        void bindSocket()
+        @nogc
+        void addListenItem(ListenItem item)
         {
-
-            socket = new TcpSocket;
-            assert(socket.isAlive);
-            socket.bind(new InternetAddress(address, port));
-            socket.listen(backlog);
-
-            criticalf("Listening on %s", socket.localAddress().toString());
+            listenItems ~= item;
         }
 
-        void acceptClient()
+        @nogc
+        void addListenItem(string host, ushort port)
         {
-            import core.thread : Thread;
+            ListenItem item = {
+                host: host,
+                port: port,
+            };
 
-            auto clientSocket = socket.accept();
-            assert(clientSocket.isAlive);
-            assert(socket.isAlive);
+            listenItems ~= item;
+        }
 
-            clientCounter++;
-            new Thread({
-                auto client = new Client(clientSocket, clientCounter);
-                client.setAuthString(authString);
-                clients ~= client;
+        nothrow @nogc
+        void addAuthItem(AuthItem item)
+        {
+            authItems ~= item;
+        }
+
+        nothrow @nogc
+        void addAuthItem(string login, string password)
+        {
+            AuthItem item = {
+                login: login,
+                password: password,
+            };
+
+            authItems ~= item;
+        }
+
+        nothrow @nogc
+        bool authenticate(string login, string password)
+        {
+            foreach (item; authItems) {
+                if (item.login == login && item.password == password) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        pure nothrow @safe @nogc
+        bool hasAuthItems()
+        {
+            return authItems.length > 0;
+        }
+
+    protected:
+        void onClient(Connection conn)
+        {
+            import core.atomic : atomicOp;
+
+            atomicOp!"+="(clientCounter, 1);
+            logger.debugN("Got client %d", clientCounter);
+
+            try {
+                auto client = new Client(conn, clientCounter, this);
                 client.run();
-            }).start();
+            } catch (Exception e) {
+                scope (failure) assert(false);
+                conn.close();
+                logger.error("Connection error: %s", e.msg);
+                debug logger.error("%s", e.info);
+            }
         }
 }
