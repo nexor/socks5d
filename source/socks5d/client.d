@@ -10,7 +10,6 @@ class Client
     protected:
         uint         id;
         Connection   conn;
-        Connection   targetConn;
 
         Server       server;
         AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
@@ -22,7 +21,6 @@ class Client
             this.id = id;
             this.server = server;
             this.conn = conn;
-            targetConn = f.connection();
 
             if (server.hasAuthItems()) {
                 availableMethods = [ AuthMethod.AUTH ];
@@ -32,9 +30,13 @@ class Client
         final void run()
         {
             logger.diagnostic("[%d] New client accepted: %s", id, conn.remoteAddress);
+            scope (exit) conn.close();
 
             try {
-                if (authenticate() && handshake()) {
+                if (authenticate()) {
+                    Connection targetConn = handshake();
+                    scope (exit) targetConn.close();
+
                     conn.duplexPipe(targetConn, id);
                 }
 
@@ -42,8 +44,6 @@ class Client
                 logger.error("Error: %s", e.msg);
             }
 
-            targetConn.close();
-            conn.close();
             logger.debugN("[%d] End of session", id);
         }
 
@@ -106,8 +106,10 @@ class Client
             return true;
         }
 
-        bool handshake()
+        Connection handshake()
         {
+            import std.socket : InternetAddress;
+
             RequestPacket requestPacket = { connID: id };
             ResponsePacket responsePacket = { connID: id };
 
@@ -118,10 +120,12 @@ class Client
                 responsePacket.replyCode = e.replyCode;
                 send(responsePacket);
 
-                return false;
+                throw e;
             }
 
             logger.debugV("[%d] Connecting to %s:%d", id, requestPacket.getHost(), requestPacket.getPort());
+
+            Connection targetConn = f.connection();
             targetConn.connect(new InternetAddress(requestPacket.getHost(), requestPacket.getPort()));
 
             responsePacket.addressType = AddressType.IPV4;
@@ -132,6 +136,6 @@ class Client
 
             send(responsePacket);
 
-            return true;
+            return targetConn;
         }
 }

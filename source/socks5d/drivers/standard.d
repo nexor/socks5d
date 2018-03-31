@@ -7,6 +7,25 @@ import std.socket;
 import std.container.array;
 import core.thread : Thread;
 
+debug {
+    import core.sys.posix.pthread;
+
+    extern(C) int pthread_setname_np(pthread_t, const char*);
+
+    int setCurrentThreadName(string name)
+    {
+
+        import std.string;
+
+        int result = pthread_setname_np(pthread_self(), name.toStringz());
+        if (result != 0) {
+            logger.error("Can't set thread name, error %d", result);
+        }
+
+        return result;
+    }
+}
+
 /** Connection implementation.
 */
 class StandardConnection : Connection
@@ -16,14 +35,14 @@ class StandardConnection : Connection
     private Socket socket;
     private StandardLogger logger;
 
-    this(Socket s = null, StandardLogger logger = null)
+    this(StandardLogger logger)
     {
-        if (s !is null) {
-            socket = s;
-        } else {
-            socket = new TcpSocket;
-        }
         this.logger = logger;
+    }
+
+    this(Socket socket)
+    {
+        this.socket = socket;
     }
 
     @property
@@ -59,6 +78,8 @@ class StandardConnection : Connection
     nothrow @nogc
     void close()
     {
+        assert(socket !is null);
+
         socket.close();
     }
 
@@ -68,6 +89,7 @@ class StandardConnection : Connection
     }
     do {
         auto sset = new SocketSet(2);
+
         ubyte[1024*8] buffer;
         ptrdiff_t     received;
 
@@ -86,7 +108,7 @@ class StandardConnection : Connection
             sset.add(targetSocket);
 
             if (Socket.select(sset, null, null) <= 0) {
-                logger.info("[%d] End of data transfer", clientId);
+                logger.debugN("[%d] End of data transfer", clientId);
                 break;
             }
 
@@ -96,7 +118,7 @@ class StandardConnection : Connection
                     logger.warning("[%d] Connection error on clientSocket.", clientId);
                     break;
                 } else if (received == 0) {
-                    logger.info("[%d] Client connection closed.", clientId);
+                    logger.debugN("[%d] Client connection closed.", clientId);
                     break;
                 }
 
@@ -105,7 +127,7 @@ class StandardConnection : Connection
                 debug {
                     bytesToTarget += received;
                     if (bytesToTarget >= bytesToTargetLogThreshold) {
-                        logger.trace("[%d] <- %d bytes sent to target", clientId, bytesToTarget);
+                        logger.debugV("[%d] <- %d bytes sent to target", clientId, bytesToTarget);
                         bytesToTarget -= bytesToTargetLogThreshold;
                     }
                 }
@@ -117,7 +139,7 @@ class StandardConnection : Connection
                     logger.warning("[%d] Connection error on targetSocket.", clientId);
                     break;
                 } else if (received == 0) {
-                    logger.info("[%d] Target connection closed.", clientId);
+                    logger.debugN("[%d] Target connection closed.", clientId);
                     break;
                 }
 
@@ -126,7 +148,7 @@ class StandardConnection : Connection
                 debug {
                     bytesToClient += received;
                     if (bytesToClient >= bytesToClientLogThreshold) {
-                        logger.trace("[%d] <- %d bytes sent to client", clientId, bytesToClient);
+                        logger.debugV("[%d] <- %d bytes sent to client", clientId, bytesToClient);
                         bytesToClient -= bytesToClientLogThreshold;
                     }
                 }
@@ -188,7 +210,11 @@ class StandardConnectionListener : ConnectionListener
         @trusted
         void listen(string address, ushort port, ConnectionCallback callback)
         {
+            import std.conv;
+
             new Thread({
+                debug setCurrentThreadName(address ~ ":" ~ port.to!string);
+
                 socket = bindSocket(address, port, backlog);
                 isListening = true;
 
@@ -211,6 +237,7 @@ class StandardConnectionListener : ConnectionListener
         {
             auto socket = new TcpSocket;
             assert(socket.isAlive);
+            socket.setOption(SocketOptionLevel.SOCKET, SocketOption.REUSEADDR, true);
             socket.bind(new InternetAddress(address, port));
             socket.listen(backlog);
 
@@ -231,6 +258,7 @@ class StandardConnectionListener : ConnectionListener
             logger.debugV("Accepted connection %s", socket.localAddress);
 
             new Thread({
+                debug setCurrentThreadName("Client");
                 callback(conn);
             }).start();
         }
@@ -248,7 +276,7 @@ final class StandardLogger : Logger
                 sharedLog.logLevel = LogLevel.info;
                 break;
             case 1:
-                sharedLog.logLevel = LogLevel.trace;
+                sharedLog.logLevel = LogLevel.info;
                 break;
             case 2:
                 sharedLog.logLevel = LogLevel.trace;
