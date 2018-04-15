@@ -96,18 +96,19 @@ class RequestException : SocksException
 
 mixin template Socks5Packet()
 {
-    ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
     uint connID;    // connection ID
-
-    ubyte getVersion()
-    {
-        return ver[0];
-    }
 }
 
 mixin template Socks5IncomingPacket()
 {
     mixin Socks5Packet;
+
+    ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
+
+    ubyte getVersion()
+    {
+        return ver[0];
+    }
 
     @safe
     void receiveVersion(Connection conn, ubyte requiredVersion = 0x05)
@@ -134,9 +135,20 @@ mixin template Socks5IncomingPacket()
     }
 }
 
-mixin template Socks5OutgoingPacket()
+mixin template Socks5OutgoingPacket(TPacketFieldsStruct)
 {
     mixin Socks5Packet;
+
+    private union
+    {
+        TPacketFieldsStruct fields;
+        ubyte[fields.sizeof] buffer;
+    }
+
+    void send(Connection conn)
+    {
+        conn.send(buffer);
+    }
 }
 
 enum bool isSocks5IncomingPacket(P) =
@@ -202,26 +214,26 @@ struct MethodIdentificationPacket
 
 struct MethodSelectionPacket
 {
-    mixin Socks5OutgoingPacket;
-
-    ubyte[1] method;
-
-    @trusted
-    void send(Connection conn)
+    private struct MethodSelectionPacketFields
     {
-        ubyte[2] buffer = [ver[0], method[0]];
+        align(1):
 
-        conn.send(buffer);
+        ubyte      ver    = 0x05;
+        AuthMethod method;
     }
 
-    AuthMethod getMethod()
+    mixin Socks5OutgoingPacket!MethodSelectionPacketFields;
+
+    @property
+    AuthMethod method()
     {
-        return cast(AuthMethod)method[0];
+        return fields.method;
     }
 
-    void setMethod(AuthMethod method)
+    @property
+    void method(AuthMethod method)
     {
-        this.method[0] = method;
+        fields.method = method;
     }
 }
 
@@ -279,26 +291,26 @@ struct AuthPacket
 
 struct AuthStatusPacket
 {
-    mixin Socks5OutgoingPacket;
-
-    private ubyte[1] status = [0x00];
-
-    @trusted
-    void send(Connection conn)
+    private struct AuthStatusPacketFields
     {
-        ubyte[2] buffer = [ver[0], status[0]];
+        align(1):
 
-        conn.send(buffer);
+        ubyte      ver    = 0x05;
+        AuthStatus status = AuthStatus.YES;
     }
 
-    AuthStatus getStatus()
+    mixin Socks5OutgoingPacket!AuthStatusPacketFields;
+
+    @property
+    AuthStatus status()
     {
-        return cast(AuthStatus)status[0];
+        return fields.status;
     }
 
-    void setStatus(AuthStatus status)
+    @property
+    void status(AuthStatus status)
     {
-        this.status[0] = status;
+        fields.status = status;
     }
 }
 
@@ -452,12 +464,9 @@ struct RequestPacket
     }
 }
 
-
 @safe
 struct ResponsePacket
 {
-    mixin Socks5OutgoingPacket;
-
     private struct ResponsePacketFields
     {
         align(1):
@@ -470,11 +479,7 @@ struct ResponsePacket
         ubyte[ushort.sizeof] bndport;
     }
 
-    private union
-    {
-        ResponsePacketFields fields;
-        ubyte[fields.sizeof] buffer;
-    }
+    mixin Socks5OutgoingPacket!ResponsePacketFields;
 
     @property
     void replyCode(ReplyCode code)
@@ -486,11 +491,6 @@ struct ResponsePacket
     void addressType(AddressType type)
     {
         fields.atyp = type;
-    }
-
-    void send(Connection conn)
-    {
-        conn.send(buffer);
     }
 
     bool setBindAddress(uint ip4, ushort port)
