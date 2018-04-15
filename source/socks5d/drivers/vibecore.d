@@ -51,11 +51,9 @@ class VibeCoreConnection : Connection
         VibeCoreLogger logger;
 
     public:
-        this(string unusedTmp = null, Logger logger = null)
+        this(VibeCoreLogger logger)
         {
-            if (logger !is null) {
-                this.logger = cast(VibeCoreLogger)logger;
-            }
+            this.logger = cast(VibeCoreLogger)logger;
         }
 
         @property
