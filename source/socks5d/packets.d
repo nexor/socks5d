@@ -124,6 +124,7 @@ mixin template Socks5IncomingPacket()
     @safe
     void receiveBuffer(Connection conn, ref ubyte[1] len, ref ubyte[] buf)
     {
+
         conn.receive(len);
 
         logger.trace("[%d] Received buffer length: %d", connID, len[0]);
@@ -208,8 +209,9 @@ struct MethodSelectionPacket
     @trusted
     void send(Connection conn)
     {
-        conn.send(ver);
-        conn.send(method);
+        ubyte[2] buffer = [ver[0], method[0]];
+
+        conn.send(buffer);
     }
 
     AuthMethod getMethod()
@@ -284,8 +286,9 @@ struct AuthStatusPacket
     @trusted
     void send(Connection conn)
     {
-        conn.send(ver);
-        conn.send(status);
+        ubyte[2] buffer = [ver[0], status[0]];
+
+        conn.send(buffer);
     }
 
     AuthStatus getStatus()
@@ -459,6 +462,7 @@ struct ResponsePacket
     {
         align(1):
 
+        ubyte       ver = 0x05;
         ReplyCode   rep = ReplyCode.SUCCEEDED;
         ubyte       rsv = 0x00;
         AddressType atyp;
@@ -486,7 +490,6 @@ struct ResponsePacket
 
     void send(Connection conn)
     {
-        conn.send(ver);
         conn.send(buffer);
     }
 
