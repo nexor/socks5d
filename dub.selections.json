@@ -1,7 +1,7 @@
 {
 	"fileVersion": 1,
 	"versions": {
-		"eventcore": "0.8.33",
+		"eventcore": "0.8.34",
 		"libasync": "0.8.3",
 		"libinputvisitor": "1.2.2",
 		"memutils": "0.4.10",
