@@ -71,17 +71,17 @@ class Client
 
             MethodSelectionPacket packet2 = {
                 connID: id,
-                method: identificationPacket.detectAuthMethod(availableMethods)
             };
+            packet2.method = identificationPacket.detectAuthMethod(availableMethods);
 
             send(packet2);
 
-            if (packet2.getMethod() == AuthMethod.NOTAVAILABLE) {
+            if (packet2.method == AuthMethod.NOTAVAILABLE) {
                 logger.diagnostic("[%d] No available method to authenticate.", id);
                 return false;
             }
 
-            if (packet2.getMethod() == AuthMethod.AUTH) {
+            if (packet2.method == AuthMethod.AUTH) {
                 AuthPacket authPacket;
                 AuthStatusPacket authStatusPacket;
 
@@ -89,13 +89,13 @@ class Client
                 logger.debugV("[%d] Client auth with credentials: %s:***", id, authPacket.login);
 
                 if (server.authenticate(authPacket.login, authPacket.password)) {
-                    authStatusPacket.setStatus(AuthStatus.YES);
+                    authStatusPacket.status = AuthStatus.YES;
                     send(authStatusPacket);
                     logger.diagnostic("[%d] Client successfully authenticated.", id);
 
                     return true;
                 } else {
-                    authStatusPacket.setStatus(AuthStatus.NO);
+                    authStatusPacket.status = AuthStatus.NO;
                     send(authStatusPacket);
                     logger.diagnostic("[%d] Client failed to authenticate.", id);
 
