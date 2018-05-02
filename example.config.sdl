@@ -1,4 +1,4 @@
 server {
     listen "127.0.0.1" port=1081
-    auth login="socks5d" password="socks5d"
+    auth "socks5d" password="socks5d"
 }
