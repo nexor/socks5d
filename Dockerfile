@@ -2,26 +2,42 @@
 
 FROM debian:buster-slim as builder
 
-RUN apt-get update && \
-    apt-get install -y libc6-dev gcc curl && \
-    curl -L -o /dmd.deb http://downloads.dlang.org/releases/2.x/2.078.0/dmd_2.078.0-0_amd64.deb && \
-    dpkg -i /dmd.deb
+ENV COMPILER=ldc \
+    COMPILER_VERSION=1.9.0
+
+RUN apt-get update && apt-get install -y curl libcurl3 build-essential zlib1g-dev libssl-dev \
+ && curl -fsS -o /tmp/install.sh https://dlang.org/install.sh \
+ && bash /tmp/install.sh -p /dlang install "${COMPILER}-${COMPILER_VERSION}" \
+ && rm /tmp/install.sh \
+ && apt-get auto-remove -y curl build-essential \
+ && apt-get install -y gcc cmake \
+ && rm -rf /var/cache/apt /dlang/${COMPILER}-*/lib32 /dlang/dub-1.0.0/dub.tar.gz
+
+ENV PATH=/dlang/${COMPILER}-${COMPILER_VERSION}/bin:${PATH} \
+    LD_LIBRARY_PATH=/dlang/${COMPILER}-${COMPILER_VERSION}/lib \
+    LIBRARY_PATH=/dlang/${COMPILER}-${COMPILER_VERSION}/lib
+
+WORKDIR /src
 
 COPY . .
 
-RUN dub build -b release
+RUN dub build -b release --compiler=ldc2
 
 ### STAGE 2:Setup ###
 
-FROM busybox:1.27.2-glibc
+FROM busybox:1.28.3-glibc
 
 COPY --from=builder /lib/x86_64-linux-gnu/librt.so.1 \
                     /lib/x86_64-linux-gnu/libdl.so.2 \
+                    /lib/x86_64-linux-gnu/libanl.so.1 \
                     /lib/x86_64-linux-gnu/libgcc_s.so.1 \
+                    /usr/lib/x86_64-linux-gnu/libssl.so.1.1 \
+                    /usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 \
+                    /lib/x86_64-linux-gnu/libz.so.1 \
                     /usr/local/lib/
 
-COPY --from=builder /socks5d /socks5d
+COPY --from=builder /src/socks5d /socks5d
 
 ENV LD_LIBRARY_PATH="/usr/local/lib"
 
-CMD /socks5d --address="0.0.0.0"
+ENTRYPOINT ["/socks5d", "--address=0.0.0.0"]
