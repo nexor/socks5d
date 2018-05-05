@@ -8,6 +8,7 @@ import socks5d.factory : logger;
 
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
+    GSSAPI = 0x01,
     AUTH = 0x02,
     NOTAVAILABLE = 0xFF
 }
@@ -63,6 +64,76 @@ string printFields(T)(T args)
     }
 
     return result;
+}
+
+class AuthMethodCollection
+{
+    protected:
+        bool[AuthMethod] authMethods;
+
+    public:
+        void add(AuthMethod method)
+        {
+            authMethods[method] = true;
+        }
+
+        void remove(AuthMethod method)
+        {
+            authMethods[method] = false;
+        }
+
+        bool has(AuthMethod method)
+        {
+            return method in authMethods &&
+                   authMethods[method] == true;
+        }
+
+        void opOpAssign(string op)(AuthMethod m)
+            if (op == "+" || op == "-")
+        {
+            static if (op == "+") {
+                add(m);
+            }
+            static if (op == "-") {
+                remove(m);
+            }
+        }
+
+        bool opBinaryRight(string op)(AuthMethod m)
+            if (op == "in")
+        {
+            return has(m);
+        }
+
+        AuthMethod[] opIndex()
+        {
+            AuthMethod[] result;
+
+            foreach (method, enabled; authMethods) {
+                if (enabled) {
+                    result ~= method;
+                }
+            }
+            return result;
+        }
+
+        unittest
+        {
+            auto authMethods = new AuthMethodCollection();
+
+            assert(authMethods[].length == 0);
+            assert(AuthMethod.NOAUTH !in authMethods);
+
+            authMethods += AuthMethod.NOAUTH;
+
+            assert(AuthMethod.NOAUTH in authMethods);
+            assert(authMethods[].length == 1);
+
+            authMethods -= AuthMethod.NOAUTH;
+            assert(AuthMethod.NOAUTH !in authMethods);
+            assert(authMethods[].length == 0);
+        }
+
 }
 
 class SocksException : Exception
@@ -170,12 +241,13 @@ struct MethodIdentificationPacket
         receiveBuffer(conn, nmethods, methods);
     }
 
-    AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
+    AuthMethod detectAuthMethod(AuthMethodCollection availableMethods)
     {
-        import std.algorithm;
+        logger.debugV("[%d] Client preferrable auth methods: %s", connID, cast(AuthMethod[])methods);
 
-        foreach (AuthMethod method; availableMethods) {
-            if (methods.canFind(method)) {
+        foreach (method; cast(AuthMethod[])methods) {
+            if (method in availableMethods) {
+                logger.debugV("[%d] Method found: %s", connID, method);
                 return method;
             }
         }
@@ -205,10 +277,19 @@ struct MethodIdentificationPacket
         sp[0].send(input);
         packet.receive(conn);
 
+        auto authMethods = new AuthMethodCollection();
+        authMethods += AuthMethod.NOAUTH;
+
         assert(packet.getVersion() == 5);
         assert(packet.getNMethods() == 1);
-        assert(packet.detectAuthMethod([AuthMethod.NOAUTH]) == AuthMethod.NOAUTH);
-        assert(packet.detectAuthMethod([AuthMethod.AUTH]) == AuthMethod.NOTAVAILABLE);
+        assert(packet.detectAuthMethod(authMethods) == AuthMethod.NOAUTH);
+
+        authMethods -= AuthMethod.NOAUTH;
+        authMethods += AuthMethod.AUTH;
+
+        import std.stdio;
+        writefln("%s", authMethods[]);
+        assert(packet.detectAuthMethod(authMethods) == AuthMethod.NOTAVAILABLE);
     }
 }
 

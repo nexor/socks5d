@@ -12,19 +12,15 @@ class Client
         Connection   conn;
 
         Server       server;
-        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
+    package:
+        AuthMethodCollection authMethods;
 
     public:
         this(Connection conn, uint id, Server server)
         {
-
             this.id = id;
             this.server = server;
             this.conn = conn;
-
-            if (server.hasAuthItems()) {
-                availableMethods = [ AuthMethod.AUTH ];
-            }
         }
 
         final void run()
@@ -72,7 +68,7 @@ class Client
             MethodSelectionPacket packet2 = {
                 connID: id,
             };
-            packet2.method = identificationPacket.detectAuthMethod(availableMethods);
+            packet2.method = identificationPacket.detectAuthMethod(authMethods);
 
             send(packet2);
 

@@ -4,6 +4,7 @@ import std.container.array;
 import socks5d.client;
 import socks5d.driver;
 import socks5d.factory : f, logger;
+import socks5d.packets: AuthMethodCollection, AuthMethod;
 
 struct ListenItem
 {
@@ -28,7 +29,7 @@ class Server
 
         Array!ListenItem listenItems;
         Array!AuthItem   authItems;
-
+        AuthMethodCollection authMethods;
     public:
         uint id;
 
@@ -41,6 +42,16 @@ class Server
 
         final void run()
         {
+            authMethods = new AuthMethodCollection();
+
+            if (hasAuthItems()) {
+                authMethods += AuthMethod.AUTH;
+            } else {
+                authMethods += AuthMethod.NOAUTH;
+            }
+
+            logger.diagnostic("Available auth methods: %s", authMethods[]);
+
             foreach (item; listenItems) {
                 auto listener = f.connectionListener();
                 logger.info("Listening on %s:%d", item.host, item.port);
@@ -110,6 +121,7 @@ class Server
 
             try {
                 auto client = new Client(conn, clientCounter, this);
+                client.authMethods = authMethods;
                 client.run();
             } catch (Exception e) {
                 scope (failure) assert(false);
