@@ -35,7 +35,9 @@ class Client
             try {
                 if (authenticate()) {
                     Connection targetConn = handshake();
-                    scope (exit) targetConn.close();
+                    scope (exit) {
+                        targetConn.close();
+                    }
 
                     conn.duplexPipe(targetConn, id);
                 }

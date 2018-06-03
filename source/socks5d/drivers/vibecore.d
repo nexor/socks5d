@@ -96,15 +96,23 @@ class VibeCoreConnection : Connection
             conn.close();
         }
 
+        @trusted
         void duplexPipe(Connection otherConnection, uint clientId)
         in {
             assert(is(otherConnection == VibeCoreConnection), "otherConnection must be an instance of VibeCoreConnection");
         }
         do {
-            auto task1 = runTask((){
+            import vibe.core.concurrency;
+
+            auto thisToTarget = async({
                 pipe(this, cast(VibeCoreConnection)otherConnection, clientId);
+
+                return 0;
             });
+
             pipe(cast(VibeCoreConnection)otherConnection, this, clientId);
+
+            thisToTarget.getResult();
         }
 
     protected:
@@ -197,6 +205,10 @@ final class VibeCoreLogger : Logger
             case 3:
                 setLogFormat(FileLogger.Format.threadTime, FileLogger.Format.threadTime);
                 setLogLevel(LogLevel.debugV);
+                break;
+            case 4:
+                setLogFormat(FileLogger.Format.threadTime, FileLogger.Format.threadTime);
+                setLogLevel(LogLevel.trace);
                 break;
             default:
                 setLogLevel(LogLevel.info);
