@@ -19,7 +19,7 @@ configuration "vibe-core" {
 	versions   "Socks5dVibeCoreDriver"
 	versions   "VibeDisableCommandLineParsing"
 
-	dependency "vibe-core" version="~>1.3.0"
+	dependency "vibe-core" version="~>1.4.0"
 
 	targetType "executable"
 
