@@ -14,7 +14,12 @@ version (Socks5dDefaultDriver)
 }
 else version (Socks5dVibeCoreDriver)
 {
-    static assert(0, "Under construction");
+    import socks5d.drivers.vibecore;
+
+    alias ApplicationImpl        = VibeCoreApplication;
+    alias ConnectionImpl         = VibeCoreConnection;
+    alias ConnectionListenerImpl = VibeCoreConnectionListener;
+    alias LoggerImpl             = VibeCoreLogger;
 }
 else
 {
