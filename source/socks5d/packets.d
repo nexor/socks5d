@@ -1,7 +1,7 @@
 module socks5d.packets;
 
 import std.bitmanip;
-import std.conv;
+import std.conv : to;
 import std.traits;
 import socks5d.driver;
 import socks5d.factory : logger;
@@ -66,76 +66,6 @@ string printFields(T)(T args)
     return result;
 }
 
-class AuthMethodCollection
-{
-    protected:
-        bool[AuthMethod] authMethods;
-
-    public:
-        void add(AuthMethod method)
-        {
-            authMethods[method] = true;
-        }
-
-        void remove(AuthMethod method)
-        {
-            authMethods[method] = false;
-        }
-
-        bool has(AuthMethod method)
-        {
-            return method in authMethods &&
-                   authMethods[method] == true;
-        }
-
-        void opOpAssign(string op)(AuthMethod m)
-            if (op == "+" || op == "-")
-        {
-            static if (op == "+") {
-                add(m);
-            }
-            static if (op == "-") {
-                remove(m);
-            }
-        }
-
-        bool opBinaryRight(string op)(AuthMethod m)
-            if (op == "in")
-        {
-            return has(m);
-        }
-
-        AuthMethod[] opIndex()
-        {
-            AuthMethod[] result;
-
-            foreach (method, enabled; authMethods) {
-                if (enabled) {
-                    result ~= method;
-                }
-            }
-            return result;
-        }
-
-        unittest
-        {
-            auto authMethods = new AuthMethodCollection();
-
-            assert(authMethods[].length == 0);
-            assert(AuthMethod.NOAUTH !in authMethods);
-
-            authMethods += AuthMethod.NOAUTH;
-
-            assert(AuthMethod.NOAUTH in authMethods);
-            assert(authMethods[].length == 1);
-
-            authMethods -= AuthMethod.NOAUTH;
-            assert(AuthMethod.NOAUTH !in authMethods);
-            assert(authMethods[].length == 0);
-        }
-
-}
-
 class SocksException : Exception
 {
     import std.exception;
@@ -184,6 +114,8 @@ mixin template Socks5IncomingPacket()
     @safe
     void receiveVersion(Connection conn, ubyte requiredVersion = 0x05)
     {
+        import std.conv : to;
+
         conn.receive(ver);
 
         logger.trace("[%d] Received version: %d", connID, ver[0]);
@@ -227,173 +159,6 @@ enum bool isSocks5IncomingPacket(P) =
 
 enum bool isSocks5OutgoingPacket(P) =
     hasMember!(P, "send");
-
-struct MethodIdentificationPacket
-{
-    mixin Socks5IncomingPacket;
-
-    ubyte[1] nmethods;
-    ubyte[]  methods;
-
-    void receive(Connection conn)
-    {
-        receiveVersion(conn);
-        receiveBuffer(conn, nmethods, methods);
-    }
-
-    AuthMethod detectAuthMethod(AuthMethodCollection availableMethods)
-    {
-        logger.debugV("[%d] Client preferrable auth methods: %s", connID, cast(AuthMethod[])methods);
-
-        foreach (method; cast(AuthMethod[])methods) {
-            if (method in availableMethods) {
-                logger.debugV("[%d] Method found: %s", connID, method);
-                return method;
-            }
-        }
-
-        return AuthMethod.NOTAVAILABLE;
-    }
-
-    ubyte getNMethods()
-    {
-        return nmethods[0];
-    }
-
-    unittest
-    {
-        import std.socket;
-        import socks5d.drivers.standard;
-
-        auto packet = new MethodIdentificationPacket;
-        auto sp = socketPair();
-        Connection conn = new StandardConnection(sp[1]);
-        immutable ubyte[] input = [
-            0x05,
-            0x01,
-            AuthMethod.NOAUTH
-        ];
-
-        sp[0].send(input);
-        packet.receive(conn);
-
-        auto authMethods = new AuthMethodCollection();
-        authMethods += AuthMethod.NOAUTH;
-
-        assert(packet.getVersion() == 5);
-        assert(packet.getNMethods() == 1);
-        assert(packet.detectAuthMethod(authMethods) == AuthMethod.NOAUTH);
-
-        authMethods -= AuthMethod.NOAUTH;
-        authMethods += AuthMethod.AUTH;
-
-        import std.stdio;
-        writefln("%s", authMethods[]);
-        assert(packet.detectAuthMethod(authMethods) == AuthMethod.NOTAVAILABLE);
-    }
-}
-
-struct MethodSelectionPacket
-{
-    private struct MethodSelectionPacketFields
-    {
-        align(1):
-
-        ubyte      ver    = 0x05;
-        AuthMethod method;
-    }
-
-    mixin Socks5OutgoingPacket!MethodSelectionPacketFields;
-
-    @property
-    AuthMethod method()
-    {
-        return fields.method;
-    }
-
-    @property
-    void method(AuthMethod method)
-    {
-        fields.method = method;
-    }
-}
-
-struct AuthPacket
-{
-    mixin Socks5IncomingPacket;
-
-    ubyte[1]  ulen;
-    ubyte[]   uname;
-    ubyte[1]  plen;
-    ubyte[]   passwd;
-
-    void receive(Connection conn)
-    {
-        receiveVersion(conn, 0x01);
-        receiveBuffer(conn, ulen, uname);
-        receiveBuffer(conn, plen, passwd);
-    }
-
-    @property
-    string login()
-    {
-        return cast(string)uname;
-    }
-
-    @property
-    string password()
-    {
-        return cast(string)passwd;
-    }
-
-    unittest
-    {
-        import std.socket;
-        import socks5d.drivers.standard;
-
-        auto packet = new AuthPacket;
-        auto sp = socketPair();
-        Connection conn = new StandardConnection(sp[1]);
-        immutable ubyte[] input = [
-            0x01,
-            5,
-            't', 'u', 's', 'e', 'r',
-            7,
-            't', 'p', 'a', 's', 's', 'w', 'd'
-        ];
-
-        sp[0].send(input);
-        packet.receive(conn);
-
-        assert(packet.getVersion() == 1);
-        assert(packet.login ~ ":" ~ packet.password == "tuser:tpasswd");
-    }
-}
-
-struct AuthStatusPacket
-{
-    private struct AuthStatusPacketFields
-    {
-        align(1):
-
-        ubyte      ver    = 0x05;
-        AuthStatus status = AuthStatus.YES;
-    }
-
-    mixin Socks5OutgoingPacket!AuthStatusPacketFields;
-
-    @property
-    AuthStatus status()
-    {
-        return fields.status;
-    }
-
-    @property
-    void status(AuthStatus status)
-    {
-        fields.status = status;
-    }
-}
 
 struct RequestPacket
 {

@@ -13,7 +13,9 @@ Configuration loadConfig(string filename)
 
     logger.diagnostic("Parsing config file %s", filename);
 
-    source.pullParseSource(filename).each!(event => rootNode.parse(event));
+    foreach (event; source.pullParseSource(filename)) {
+        rootNode.parse(event);
+    }
 
     return conf;
 }
@@ -161,7 +163,7 @@ class SDLServerTag : SDLTag
         {
             super(conf);
 
-            server = new Server;
+            server = new Server([], null);
             id += 1;
         }
 
@@ -244,8 +246,15 @@ class SDLServerAuthTag : SDLTag
     protected:
         override void onTagEnd(TagEndEvent event)
         {
+            import socks5d.packets : AuthMethod;
+            import socks5d.auth : PlainAuthMethodHandler;
+
             isFinished = true;
-            server.addAuthItem(login, password);
+
+            if (server.authManager.has(AuthMethod.AUTH)) {
+                auto plainAuthHandler = cast(PlainAuthMethodHandler)server.authManager.getHandler(AuthMethod.AUTH);
+                plainAuthHandler.addAuthItem(login, password);
+            }
         }
 
         override void onValue(ValueEvent event)
