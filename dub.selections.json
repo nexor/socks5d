@@ -1,14 +1,14 @@
 {
 	"fileVersion": 1,
 	"versions": {
-		"eventcore": "0.8.35",
-		"libasync": "0.8.3",
+		"eventcore": "0.8.41",
+		"libasync": "0.8.4",
 		"libinputvisitor": "1.2.2",
-		"memutils": "0.4.10",
-		"sdlang-d": "0.10.3",
-		"stdx-allocator": "2.77.2",
-		"taggedalgebraic": "0.10.11",
-		"unit-threaded": "0.7.46",
-		"vibe-core": "1.4.0"
+		"memutils": "0.4.13",
+		"sdlang-d": "0.10.5",
+		"stdx-allocator": "2.77.5",
+		"taggedalgebraic": "0.11.3",
+		"unit-threaded": "0.7.55",
+		"vibe-core": "1.6.0"
 	}
 }

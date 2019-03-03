@@ -4,27 +4,25 @@ import socks5d.packets;
 import socks5d.driver;
 import socks5d.factory : f, logger, ConnectionImpl;
 import socks5d.server;
+import socks5d.auth;
 
 class Client
 {
-    protected:
+    package:
         uint         id;
-        Connection   conn;
 
-        Server       server;
-        AuthMethod[] availableMethods = [ AuthMethod.NOAUTH ];
+    protected:
+        Connection   conn;
+        AuthManager authManager;
 
     public:
-        this(Connection conn, uint id, Server server)
+        this(Connection conn, uint id, AuthManager authManager)
         {
+            assert(authManager !is null);
 
             this.id = id;
-            this.server = server;
+            this.authManager = authManager;
             this.conn = conn;
-
-            if (server.hasAuthItems()) {
-                availableMethods = [ AuthMethod.AUTH ];
-            }
         }
 
         final void run()
@@ -33,7 +31,7 @@ class Client
             scope (exit) conn.close();
 
             try {
-                if (authenticate()) {
+                if (authManager.authenticate(this)) {
                     Connection targetConn = handshake();
                     scope (exit) {
                         targetConn.close();
@@ -49,7 +47,7 @@ class Client
             logger.debugN("[%d] End of session", id);
         }
 
-    protected:
+    package:
         void send(P)(ref P packet)
         if (isSocks5OutgoingPacket!P)
         {
@@ -62,50 +60,6 @@ class Client
         {
             packet.receive(conn);
             logger.debugV("[%d] recv: %s", id, packet.printFields);
-        }
-
-        bool authenticate()
-        {
-            MethodIdentificationPacket identificationPacket = {
-                connID: id,
-            };
-            receive(identificationPacket);
-
-            MethodSelectionPacket packet2 = {
-                connID: id,
-            };
-            packet2.method = identificationPacket.detectAuthMethod(availableMethods);
-
-            send(packet2);
-
-            if (packet2.method == AuthMethod.NOTAVAILABLE) {
-                logger.diagnostic("[%d] No available method to authenticate.", id);
-                return false;
-            }
-
-            if (packet2.method == AuthMethod.AUTH) {
-                AuthPacket authPacket;
-                AuthStatusPacket authStatusPacket;
-
-                receive(authPacket);
-                logger.debugV("[%d] Client auth with credentials: %s:***", id, authPacket.login);
-
-                if (server.authenticate(authPacket.login, authPacket.password)) {
-                    authStatusPacket.status = AuthStatus.YES;
-                    send(authStatusPacket);
-                    logger.diagnostic("[%d] Client successfully authenticated.", id);
-
-                    return true;
-                } else {
-                    authStatusPacket.status = AuthStatus.NO;
-                    send(authStatusPacket);
-                    logger.diagnostic("[%d] Client failed to authenticate.", id);
-
-                    return false;
-                }
-            }
-
-            return true;
         }
 
         Connection handshake()

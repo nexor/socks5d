@@ -30,9 +30,8 @@ int main(string[] args)
     if (configFile is null) {
         logger.warning("config file not found, using default settings");
 
-        auto server = new Server;
+        auto server = createDefaultServer(address, port);
 
-        server.addListenItem(address, port);
         app.addServer(server);
 
     } else if (!app.fileExists(configFile)) {

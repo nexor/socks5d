@@ -4,17 +4,12 @@ import std.container.array;
 import socks5d.client;
 import socks5d.driver;
 import socks5d.factory : f, logger;
+import socks5d.auth;
 
 struct ListenItem
 {
     string host;
     ushort port;
-}
-
-struct AuthItem
-{
-    string login;
-    string password;
 }
 
 class Server
@@ -27,20 +22,31 @@ class Server
         static shared uint clientCounter = 0;
 
         Array!ListenItem listenItems;
-        Array!AuthItem   authItems;
+
+    package AuthManager authManager;
 
     public:
         uint id;
 
         @nogc
-        this(ListenItem[] listenItems = [], AuthItem[] authItems = [])
+        this(ListenItem[] listenItems, AuthManager authManager)
+        in {
+            assert(authManager !is null);
+        } body
         {
+
+
             this.listenItems = listenItems;
-            this.authItems = authItems;
+            this.authManager = authManager;
         }
 
         final void run()
         {
+            import std.algorithm.iteration : map, filter;
+            import std.traits;
+
+            logger.diagnostic("Available auth methods: %s",   authManager.getSupportedMethods());
+
             foreach (item; listenItems) {
                 auto listener = f.connectionListener();
                 logger.info("Listening on %s:%d", item.host, item.port);
@@ -65,40 +71,9 @@ class Server
             listenItems ~= item;
         }
 
-        nothrow @nogc
-        void addAuthItem(AuthItem item)
-        {
-            authItems ~= item;
-        }
 
-        nothrow @nogc
-        void addAuthItem(string login, string password)
-        {
-            AuthItem item = {
-                login: login,
-                password: password,
-            };
 
-            authItems ~= item;
-        }
 
-        nothrow @nogc
-        bool authenticate(string login, string password)
-        {
-            foreach (item; authItems) {
-                if (item.login == login && item.password == password) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        pure nothrow @safe @nogc
-        bool hasAuthItems()
-        {
-            return authItems.length > 0;
-        }
 
     protected:
         void onClient(Connection conn)
@@ -109,7 +84,7 @@ class Server
             logger.debugN("Got client %d", clientCounter);
 
             try {
-                auto client = new Client(conn, clientCounter, this);
+                auto client = new Client(conn, clientCounter, this.authManager);
                 client.run();
             } catch (Exception e) {
                 scope (failure) assert(false);
@@ -118,4 +93,16 @@ class Server
                 debug logger.error("%s", e.info);
             }
         }
+}
+
+Server createDefaultServer(string address, ushort port)
+{
+    auto authManager = new DefaultAuthManager();
+    authManager.add(new NoAuthMethodHandler());
+
+    auto server = new Server([], authManager);
+
+    server.addListenItem(address, port);
+
+    return server;
 }
