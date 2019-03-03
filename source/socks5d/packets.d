@@ -1,13 +1,21 @@
 module socks5d.packets;
 
-import std.socket;
 import std.bitmanip;
-import std.conv;
+import std.conv : to;
+import std.traits;
+import socks5d.driver;
+import socks5d.factory : logger;
 
 enum AuthMethod : ubyte {
     NOAUTH = 0x00,
+    GSSAPI = 0x01,
     AUTH = 0x02,
     NOTAVAILABLE = 0xFF
+}
+
+enum AuthStatus : ubyte {
+    YES = 0x00,
+    NO = 0x01,
 }
 
 enum RequestCmd : ubyte {
@@ -49,6 +57,9 @@ string printFields(T)(T args)
     }
     max += 1;
     foreach (index, value; values) {
+        if (T.tupleof[index].stringof == "connID") {
+            continue;
+        }
         result ~= format("%s=%s ", T.tupleof[index].stringof, value);
     }
 
@@ -57,13 +68,18 @@ string printFields(T)(T args)
 
 class SocksException : Exception
 {
-    public:
+    import std.exception;
 
-        this(string msg, string file = __FILE__,
-         size_t line = __LINE__, Throwable next = null) @safe pure nothrow
-        {
-            super(msg, file, line, next);
-        }
+    ///
+    mixin basicExceptionCtors;
+}
+
+class AuthException : Exception
+{
+    import std.exception;
+
+    ///
+    mixin basicExceptionCtors;
 }
 
 class RequestException : SocksException
@@ -79,222 +95,177 @@ class RequestException : SocksException
         }
 }
 
-abstract class Socks5Packet
+mixin template Socks5Packet()
 {
+    uint connID;    // connection ID
+}
+
+mixin template Socks5IncomingPacket()
+{
+    mixin Socks5Packet;
+
     ubyte[1] ver = [0x05]; //should be 0x05 (or 0x01 for auth)
 
     ubyte getVersion()
     {
         return ver[0];
     }
-}
 
-abstract class IncomingPacket: Socks5Packet
-{
-    void receiveVersion(Socket socket, ubyte requiredVersion = 0x05)
+    @safe
+    void receiveVersion(Connection conn, ubyte requiredVersion = 0x05)
     {
-        socket.receive(ver);
+        import std.conv : to;
+
+        conn.receive(ver);
+
+        logger.trace("[%d] Received version: %d", connID, ver[0]);
+
         if (ver[0] != requiredVersion) {
             throw new SocksException("Incorrect protocol version: " ~ ver[0].to!string);
         }
     }
 
-    void receiveBuffer(Socket s, ref ubyte[1] len, ref ubyte[] buf)
+    @safe
+    void receiveBuffer(Connection conn, ref ubyte[1] len, ref ubyte[] buf)
     {
-        s.receive(len);
+
+        conn.receive(len);
+
+        logger.trace("[%d] Received buffer length: %d", connID, len[0]);
+
         buf = new ubyte[len[0]];
-        s.receive(buf);
-    }
-
-    void receive(Socket s);
-}
-
-abstract class OutgoingPacket: Socks5Packet
-{
-    abstract void send(Socket s);
-}
-
-class MethodIdentificationPacket : IncomingPacket
-{
-    ubyte[1] nmethods;
-    ubyte[]  methods;
-
-    override void receive(Socket socket)
-    {
-        receiveVersion(socket);
-        receiveBuffer(socket, nmethods, methods);
-    }
-
-    AuthMethod detectAuthMethod(AuthMethod[] availableMethods)
-    {
-        import std.algorithm;
-
-        foreach (AuthMethod method; availableMethods) {
-            if (methods.canFind(method)) {
-                return method;
-            }
-        }
-
-        return AuthMethod.NOTAVAILABLE;
-    }
-
-    ubyte getNMethods()
-    {
-        return nmethods[0];
-    }
-
-    unittest
-    {
-        auto packet = new MethodIdentificationPacket;
-        auto sp = socketPair();
-        immutable ubyte[] input = [
-            0x05,
-            0x01,
-            AuthMethod.NOAUTH
-        ];
-
-        sp[0].send(input);
-        packet.receive(sp[1]);
-
-        assert(packet.getVersion() == 5);
-        assert(packet.getNMethods() == 1);
-        assert(packet.detectAuthMethod([AuthMethod.NOAUTH]) == AuthMethod.NOAUTH);
-        assert(packet.detectAuthMethod([AuthMethod.AUTH]) == AuthMethod.NOTAVAILABLE);
+        conn.receive(buf);
     }
 }
 
-class MethodSelectionPacket : OutgoingPacket
+mixin template Socks5OutgoingPacket(TPacketFieldsStruct)
 {
-    ubyte method;
+    mixin Socks5Packet;
 
-    override void send(Socket s)
+    private union
     {
-        s.send(ver);
-        s.send((&method)[0..1]);
+        TPacketFieldsStruct fields;
+        ubyte[fields.sizeof] buffer;
+    }
+
+    void send(Connection conn)
+    {
+        conn.send(buffer);
     }
 }
 
-class AuthPacket : IncomingPacket
+enum bool isSocks5IncomingPacket(P) =
+    hasMember!(P, "receive");
+
+enum bool isSocks5OutgoingPacket(P) =
+    hasMember!(P, "send");
+
+struct RequestPacket
 {
-    ubyte[1]  ulen;
-    ubyte[]   uname;
-    ubyte[1]  plen;
-    ubyte[]   passwd;
+    mixin Socks5IncomingPacket;
 
-    override void receive(Socket socket)
-    {
-        receiveVersion(socket, 0x01);
-        receiveBuffer(socket, ulen, uname);
-        receiveBuffer(socket, plen, passwd);
-    }
+    import std.socket : InternetAddress;
 
-    string getAuthString()
-    {
-        import std.format : format;
-
-        return format("%s:%s", cast(char[])uname, cast(char[])passwd ) ;
-    }
-
-    unittest
-    {
-        auto packet = new AuthPacket;
-        auto sp = socketPair();
-        immutable ubyte[] input = [
-            0x01,
-            5,
-            't', 'u', 's', 'e', 'r',
-            7,
-            't', 'p', 'a', 's', 's', 'w', 'd'
-        ];
-
-        sp[0].send(input);
-        packet.receive(sp[1]);
-
-        assert(packet.getVersion() == 1);
-        assert(packet.getAuthString() == "tuser:tpasswd");
-    }
-}
-
-class AuthStatusPacket : OutgoingPacket
-{
-    ubyte status = 0x00;
-
-    override void send(Socket s)
-    {
-        s.send(ver);
-        s.send((&status)[0..1]);
-    }
-}
-
-class RequestPacket : IncomingPacket
-{
     RequestCmd[1]  cmd;
     ubyte[1]       rsv;
     AddressType[1] atyp;
     ubyte[]        dstaddr;
     ubyte[2]       dstport;
 
-    private InternetAddress destinationAddress;
+    private string host;
 
     // fill structure with data from socket
-    override void receive(Socket socket)
+    void receive(Connection conn)
     {
-        receiveVersion(socket);
-        readRequestCommand(socket);
-        socket.receive(rsv);
+        receiveVersion(conn);
+        readRequestCommand(conn);
+        conn.receive(rsv);
+
         if (rsv[0] != 0x00) {
             throw new RequestException(ReplyCode.FAILURE, "Received incorrect rsv byte");
         }
 
-        destinationAddress = readAddressAndPort(socket);
+        readAddressAndPort(conn);
     }
 
-    InternetAddress getDestinationAddress()
+    ushort getPort()
     {
-        return destinationAddress;
+        return dstport.bigEndianToNative!ushort;
     }
 
-    private void readRequestCommand(Socket socket)
+    string getHost()
     {
-        socket.receive(cmd);
+        return host;
+    }
+
+    private void readRequestCommand(Connection conn)
+    {
+        conn.receive(cast(ubyte[1])cmd);
+
+        debug logger.trace("[%d] Received request command: %s", connID, cmd[0]);
+
         if (cmd[0] != RequestCmd.CONNECT) {
             throw new RequestException(ReplyCode.CMD_NOTSUPPORTED,
                 "Only CONNECT method is supported, given " ~ cmd[0].to!string);
         }
     }
 
-    private InternetAddress readAddressAndPort(Socket socket)
+    @trusted
+    private void readAddressAndPort(Connection conn)
     {
-        socket.receive(atyp);
+        import std.socket : InternetAddress;
+
+        conn.receive(cast(ubyte[1])atyp);
 
         switch (atyp[0]) {
             case AddressType.IPV4:
-                dstaddr = new ubyte[4];
-                socket.receive(dstaddr);
-                socket.receive(dstport);
+                debug logger.trace("[%d] Address type: IPV4", connID);
 
-                return new InternetAddress(dstaddr.read!uint, dstport.bigEndianToNative!ushort);
+                dstaddr = new ubyte[4];
+                conn.receive(dstaddr);
+                conn.receive(dstport);
+
+                host = InternetAddress.addrToString(dstaddr.read!uint);
+                break;
 
             case AddressType.DOMAIN:
-                ubyte[1] length;
-                receiveBuffer(socket, length, dstaddr);
-                socket.receive(dstport);
+                debug logger.trace("[%d] Adress type: DOMAIN", connID);
 
-                return new InternetAddress(cast(char[])dstaddr, dstport.bigEndianToNative!ushort);
+                ubyte[1] length;
+                receiveBuffer(conn, length, dstaddr);
+                conn.receive(dstport);
+                host = stringDstaddr();
+
+                logger.debugN("[%d] Request connect to %s", connID, host);
+                break;
 
             case AddressType.IPV6:
+                debug logger.trace("[%d] Address type: IPV6", connID);
+
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "AddressType=ipv6 is not supported");
 
             default:
+                debug logger.trace("[%d] Address type: UNKNOWN", connID);
+
                 throw new RequestException(ReplyCode.ADDR_NOTSUPPORTED, "Unknown AddressType: " ~ atyp[0]);
         }
+    }
+
+    @trusted
+    private string stringDstaddr()
+    {
+        return cast(string)dstaddr;
     }
 
     /// test IPv4 address type
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new RequestPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
@@ -305,64 +276,92 @@ class RequestPacket : IncomingPacket
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
-        assert(packet.getDestinationAddress().toString() == "10.0.35.94:80");
+        assert(packet.getHost() == "10.0.35.94");
+        assert(packet.getPort() == 80);
     }
 
-    /// test domain address type
+    /// test domain address type - do not resolve host name
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new RequestPacket;
         auto sp = socketPair();
+        Connection conn = new StandardConnection(sp[1]);
         immutable ubyte[] input = [
             0x05,
             0x01,
             0x00,
             AddressType.DOMAIN,
-            9, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
+            "localhost".length, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
             0x00, 0x50 // port 80
         ];
 
         sp[0].send(input);
-        packet.receive(sp[1]);
+        packet.receive(conn);
 
         assert(packet.getVersion() == 5);
-        assert(packet.getDestinationAddress().toString() == "127.0.0.1:80");
+        assert(packet.getHost() == "localhost");
+        assert(packet.getPort() == 80);
     }
 }
 
-class ResponsePacket : OutgoingPacket
+@safe
+struct ResponsePacket
 {
-    ReplyCode   rep = ReplyCode.SUCCEEDED;
-    ubyte[1]    rsv = [0x00];
-    AddressType atyp;
-    ubyte[4]    bndaddr;
-    ubyte[2]    bndport;
-
-    override void send(Socket s)
+    private struct ResponsePacketFields
     {
-        s.send(ver);
-        s.send((&rep)[0..1]);
-        s.send(rsv);
-        s.send((&atyp)[0..1]);
-        s.send(bndaddr);
-        s.send(bndport);
+        align(1):
+
+        ubyte       ver = 0x05;
+        ReplyCode   rep = ReplyCode.SUCCEEDED;
+        ubyte       rsv = 0x00;
+        AddressType atyp;
+        ubyte[uint.sizeof]   bndaddr;
+        ubyte[ushort.sizeof] bndport;
     }
 
-    bool setBindAddress(InternetAddress address)
+    mixin Socks5OutgoingPacket!ResponsePacketFields;
+
+    @property
+    void replyCode(ReplyCode code)
     {
-        bndport = nativeToBigEndian(address.port);
-        bndaddr = nativeToBigEndian(address.addr);
+        fields.rep = code;
+    }
+
+    @property
+    void addressType(AddressType type)
+    {
+        fields.atyp = type;
+    }
+
+    bool setBindAddress(uint ip4, ushort port)
+    {
+        fields.bndaddr = ip4.nativeToBigEndian();
+        fields.bndport = port.nativeToBigEndian();
+
+        debug {
+            import std.socket : InternetAddress;
+            auto address = new InternetAddress(ip4, port);
+            logger.trace("[%d] Local target address: %s", connID, address.toAddrString());
+        }
 
         return true;
     }
 
     unittest
     {
+        import std.socket;
+        import socks5d.drivers.standard;
+
         auto packet = new ResponsePacket;
+        auto address = new InternetAddress("127.0.0.1", 81);
         auto sp = socketPair();
+        auto conn = new StandardConnection(sp[0]);
         immutable ubyte[] output = [
             0x05,
             ReplyCode.SUCCEEDED,
@@ -372,9 +371,9 @@ class ResponsePacket : OutgoingPacket
             0x00, 0x51    // port 81
         ];
 
-        packet.setBindAddress(new InternetAddress("127.0.0.1", 81));
+        packet.setBindAddress(address.addr, address.port);
 
-        packet.send(sp[0]);
+        packet.send(conn);
         ubyte[output.length] buf;
         sp[1].receive(buf);
 

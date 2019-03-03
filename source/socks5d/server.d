@@ -1,71 +1,108 @@
 module socks5d.server;
 
+import std.container.array;
 import socks5d.client;
-import std.socket;
-import std.experimental.logger;
+import socks5d.driver;
+import socks5d.factory : f, logger;
+import socks5d.auth;
+
+struct ListenItem
+{
+    string host;
+    ushort port;
+}
 
 class Server
 {
     private:
         string address;
         ushort port;
-        string authString;
-        int backlog;
-        Socket socket;
-        Client[] clients;
-        uint clientCounter = 0;
+
+        Array!Client clients;
+        static shared uint clientCounter = 0;
+
+        Array!ListenItem listenItems;
+
+    package AuthManager authManager;
 
     public:
-        this(string address, ushort port = 1080, int backlog = 10)
-        {
-            this.address = address;
-            this.port = port;
-            this.backlog = backlog;
-        }
+        uint id;
 
-        void setAuthString(string authString)
+        @nogc
+        this(ListenItem[] listenItems, AuthManager authManager)
+        in {
+            assert(authManager !is null);
+        } body
         {
-            this.authString = authString;
-            if (authString.length > 1) {
-                warningf("Using authentication string: %s", authString);
-            }
+
+
+            this.listenItems = listenItems;
+            this.authManager = authManager;
         }
 
         final void run()
         {
-            bindSocket();
+            import std.algorithm.iteration : map, filter;
+            import std.traits;
 
-            while (true) {
-                acceptClient();
+            logger.diagnostic("Available auth methods: %s",   authManager.getSupportedMethods());
+
+            foreach (item; listenItems) {
+                auto listener = f.connectionListener();
+                logger.info("Listening on %s:%d", item.host, item.port);
+                listener.listen(item.host, item.port, &onClient);
             }
         }
 
+        @nogc
+        void addListenItem(ListenItem item)
+        {
+            listenItems ~= item;
+        }
+
+        @nogc
+        void addListenItem(string host, ushort port)
+        {
+            ListenItem item = {
+                host: host,
+                port: port,
+            };
+
+            listenItems ~= item;
+        }
+
+
+
+
+
     protected:
-        void bindSocket()
+        void onClient(Connection conn)
         {
+            import core.atomic : atomicOp;
 
-            socket = new TcpSocket;
-            assert(socket.isAlive);
-            socket.bind(new InternetAddress(address, port));
-            socket.listen(backlog);
+            atomicOp!"+="(clientCounter, 1);
+            logger.debugN("Got client %d", clientCounter);
 
-            criticalf("Listening on %s", socket.localAddress().toString());
-        }
-
-        void acceptClient()
-        {
-            import core.thread : Thread;
-
-            auto clientSocket = socket.accept();
-            assert(clientSocket.isAlive);
-            assert(socket.isAlive);
-
-            clientCounter++;
-            new Thread({
-                auto client = new Client(clientSocket, clientCounter);
-                client.setAuthString(authString);
-                clients ~= client;
+            try {
+                auto client = new Client(conn, clientCounter, this.authManager);
                 client.run();
-            }).start();
+            } catch (Exception e) {
+                scope (failure) assert(false);
+                conn.close();
+                logger.error("Connection error: %s", e.msg);
+                debug logger.error("%s", e.info);
+            }
         }
+}
+
+Server createDefaultServer(string address, ushort port)
+{
+    auto authManager = new DefaultAuthManager();
+    authManager.add(new NoAuthMethodHandler());
+
+    auto server = new Server([], authManager);
+
+    server.addListenItem(address, port);
+
+    return server;
 }
