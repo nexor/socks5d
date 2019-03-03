@@ -2,6 +2,7 @@ module socks5d.config;
 
 import sdlang.parser;
 import socks5d.server;
+import socks5d.auth;
 import socks5d.factory : logger;
 import std.conv, std.file, std.algorithm.iteration;
 
@@ -163,7 +164,7 @@ class SDLServerTag : SDLTag
         {
             super(conf);
 
-            server = new Server([], null);
+            server = new Server([], new DefaultAuthManager());
             id += 1;
         }
 
@@ -251,10 +252,12 @@ class SDLServerAuthTag : SDLTag
 
             isFinished = true;
 
-            if (server.authManager.has(AuthMethod.AUTH)) {
-                auto plainAuthHandler = cast(PlainAuthMethodHandler)server.authManager.getHandler(AuthMethod.AUTH);
-                plainAuthHandler.addAuthItem(login, password);
+            if (!server.authManager.has(AuthMethod.AUTH)) {
+                server.authManager.add(new PlainAuthMethodHandler);
             }
+
+            auto plainAuthHandler = cast(PlainAuthMethodHandler)server.authManager.getHandler(AuthMethod.AUTH);
+            plainAuthHandler.addAuthItem(login, password);
         }
 
         override void onValue(ValueEvent event)

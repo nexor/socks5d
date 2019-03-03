@@ -30,7 +30,12 @@ class Server
 
         @nogc
         this(ListenItem[] listenItems, AuthManager authManager)
+        in {
+            assert(authManager !is null);
+        } body
         {
+
+
             this.listenItems = listenItems;
             this.authManager = authManager;
         }
@@ -40,7 +45,6 @@ class Server
             import std.algorithm.iteration : map, filter;
             import std.traits;
 
-            //logger.diagnostic("Available auth methods: %s",   auth authManager.authMethods[]);
             logger.diagnostic("Available auth methods: %s",   authManager.getSupportedMethods());
 
             foreach (item; listenItems) {
