@@ -185,6 +185,13 @@ class SDLServerTag : SDLTag
 
         override void onTagEnd(TagEndEvent event)
         {
+            import socks5d.packets : AuthMethod;
+            import socks5d.auth : NoAuthMethodHandler;
+
+            if (!server.authManager.has(AuthMethod.AUTH)) {
+                server.authManager.add(new NoAuthMethodHandler);
+            }
+
             isFinished = true;
             conf.addServer(id, server);
         }
