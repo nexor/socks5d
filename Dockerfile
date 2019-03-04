@@ -3,9 +3,9 @@
 FROM debian:buster-slim as builder
 
 ENV COMPILER=ldc \
-    COMPILER_VERSION=1.9.0
+    COMPILER_VERSION=1.14.0
 
-RUN apt-get update && apt-get install -y curl libcurl3 build-essential zlib1g-dev libssl-dev \
+RUN apt-get update && apt-get install -y curl libcurl4 build-essential zlib1g-dev libssl-dev \
  && curl -fsS -o /tmp/install.sh https://dlang.org/install.sh \
  && bash /tmp/install.sh -p /dlang install "${COMPILER}-${COMPILER_VERSION}" \
  && rm /tmp/install.sh \
@@ -25,7 +25,7 @@ RUN dub build -b release --compiler=ldc2
 
 ### STAGE 2:Setup ###
 
-FROM busybox:1.28.3-glibc
+FROM busybox:1.30.1-glibc
 
 COPY --from=builder /lib/x86_64-linux-gnu/librt.so.1 \
                     /lib/x86_64-linux-gnu/libdl.so.2 \
