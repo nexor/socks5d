@@ -8,6 +8,8 @@ dependency "sdlang-d" version="~>0.10.2"
 
 excludedSourceFiles "source/socks5d/drivers/*.d"
 
+#debugVersions "Socks5dConfig"
+
 configuration "default" {
 	versions   "Socks5dDefaultDriver"
 	targetType "executable"

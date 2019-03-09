@@ -67,26 +67,34 @@ abstract class SDLTag
                 final switch(event.kind) {
                     case ParserEvent.Kind.tagStart:
                         auto e = cast(TagStartEvent) event;
-                        logger.debugV("%s TagStartEvent: %s:%s @ %s", typeid(this), e.namespace, e.name, e.location);
+                        debug(Socks5dConfig)
+                            logger.debugV("%s TagStartEvent: %s:%s @ %s",
+                                typeid(this),
+                                e.namespace,
+                                e.name,
+                                e.location);
                         onTagStart(e);
                         break;
 
                     case ParserEvent.Kind.tagEnd:
                         auto e = cast(TagEndEvent) event;
-                        logger.debugV("%s TagEndEvent", typeid(this));
+                        debug(Socks5dConfig)
+                            logger.debugV("%s TagEndEvent", typeid(this));
                         onTagEnd(e);
                         assert(isFinished == true);
                         break;
 
                     case ParserEvent.Kind.value:
                         auto e = cast(ValueEvent) event;
-                        logger.debugV("%s ValueEvent: %s", typeid(this), e.value);
+                        debug(Socks5dConfig)
+                            logger.debugV("%s ValueEvent: %s", typeid(this), e.value);
                         onValue(e);
                         break;
 
                     case ParserEvent.Kind.attribute:
                         auto e = cast(AttributeEvent) event;
-                        logger.debugV("%s AttributeEvent: %s:%s = %s", typeid(this), e.namespace, e.name, e.value);
+                        debug(Socks5dConfig)
+                            logger.debugV("%s AttributeEvent: %s:%s = %s", typeid(this), e.namespace, e.name, e.value);
                         onAttribute(e);
                         break;
                 }
