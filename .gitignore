@@ -24,4 +24,4 @@ docs/
 *.lst
 
 /socks5d
-/socks5d-test-library
+/socks5d-test-*

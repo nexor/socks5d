@@ -157,8 +157,13 @@ class VibeCoreConnectionListener : ConnectionListener
         @trusted
         void listen(string address, ushort port, ConnectionCallback callback)
         {
+            import vibe.core.net: TCPListenOptions;
+
             this.callback = callback;
-            listener = listenTCP(port, &acceptClient, address);
+
+            const options = TCPListenOptions.reuseAddress | TCPListenOptions.reusePort;
+
+            listener = listenTCP(port, &acceptClient, address, options);
             isListening = true;
         }
 

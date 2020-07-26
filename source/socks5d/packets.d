@@ -66,6 +66,68 @@ string printFields(T)(T args)
     return result;
 }
 
+version (unittest)
+{
+    import std.socket : Socket, InternetAddress, TcpSocket;
+
+    class StandardConnection : Connection
+    {
+        @safe:
+
+        private Socket socket;
+
+
+
+
+        this(Socket socket)
+        {
+            this.socket = socket;
+        }
+
+        @property
+        InternetAddress localAddress()
+        {
+            return cast(InternetAddress)socket.localAddress;
+        }
+
+        @property
+        InternetAddress remoteAddress()
+        {
+            return cast(InternetAddress)socket.remoteAddress;
+        }
+
+        ptrdiff_t send(const(void)[] buf)
+        {
+            return socket.send(buf);
+        }
+
+        ptrdiff_t receive(void[] buf)
+        {
+            return socket.receive(buf);
+        }
+
+        bool connect(InternetAddress address)
+        {
+            socket = new TcpSocket;
+            socket.connect(address);
+
+            return socket.isAlive;
+        }
+
+        nothrow @nogc
+        void close()
+        {
+            assert(socket !is null);
+
+            socket.close();
+        }
+
+        void duplexPipe(Connection otherConnection, uint clientId)
+        do {
+        }
+    }
+}
+
 class SocksException : Exception
 {
     import std.exception;

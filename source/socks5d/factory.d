@@ -1,30 +1,14 @@
 module socks5d.factory;
 
-import socks5d.driver;
-import std.variant;
+import socks5d.driver : Application, Connection, ConnectionListener;
 
-version (Socks5dDefaultDriver)
-{
-    import socks5d.drivers.standard;
+import socks5d.drivers.vibecore : VibeCoreApplication, VibeCoreConnection, VibeCoreConnectionListener, VibeCoreLogger;
 
-    alias ApplicationImpl        = StandardApplication;
-    alias ConnectionImpl         = StandardConnection;
-    alias ConnectionListenerImpl = StandardConnectionListener;
-    alias LoggerImpl             = StandardLogger;
-}
-else version (Socks5dVibeCoreDriver)
-{
-    import socks5d.drivers.vibecore;
+alias ApplicationImpl        = VibeCoreApplication;
+alias ConnectionImpl         = VibeCoreConnection;
+alias ConnectionListenerImpl = VibeCoreConnectionListener;
+alias LoggerImpl             = VibeCoreLogger;
 
-    alias ApplicationImpl        = VibeCoreApplication;
-    alias ConnectionImpl         = VibeCoreConnection;
-    alias ConnectionListenerImpl = VibeCoreConnectionListener;
-    alias LoggerImpl             = VibeCoreLogger;
-}
-else
-{
-    static assert(0, "Incorrect build version");
-}
 
 /**
 */
