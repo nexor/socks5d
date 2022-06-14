@@ -1,14 +1,14 @@
 {
 	"fileVersion": 1,
 	"versions": {
-		"eventcore": "0.8.41",
-		"libasync": "0.8.4",
+		"eventcore": "0.8.50",
+		"libasync": "0.8.6",
 		"libinputvisitor": "1.2.2",
-		"memutils": "0.4.13",
-		"sdlang-d": "0.10.5",
+		"memutils": "1.0.4",
+		"sdlang-d": "0.10.6",
 		"stdx-allocator": "2.77.5",
-		"taggedalgebraic": "0.11.3",
+		"taggedalgebraic": "0.11.22",
 		"unit-threaded": "0.7.55",
-		"vibe-core": "1.6.0"
+		"vibe-core": "1.6.2"
 	}
 }
