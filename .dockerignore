@@ -1,0 +1,9 @@
+.git
+.dub
+socks5d
+socks5d-*
+Dockerfile
+Makefile
+*.sh
+*.txt
+*config.sdl
