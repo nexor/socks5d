@@ -273,19 +273,19 @@ final class StandardLogger : Logger
     {
         switch (level) {
             case 0:
-                sharedLog.logLevel = LogLevel.info;
+                globalLogLevel = LogLevel.info;
                 break;
             case 1:
-                sharedLog.logLevel = LogLevel.info;
+                globalLogLevel = LogLevel.info;
                 break;
             case 2:
-                sharedLog.logLevel = LogLevel.trace;
+                globalLogLevel = LogLevel.trace;
                 break;
             case 3:
-                sharedLog.logLevel = LogLevel.trace;
+                globalLogLevel = LogLevel.trace;
                 break;
             default:
-                sharedLog.logLevel = LogLevel.info;
+                globalLogLevel = LogLevel.info;
                 return false;
         }
 
